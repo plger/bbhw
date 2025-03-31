@@ -1,0 +1,149 @@
+---
+title: "Grouped FDR simulation"
+author: "Pierre-Luc"
+date: "2025-03-25"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(IHW)
+  library(BiocParallel)
+  library(ggplot2)
+  library(patchwork)
+  library(muscat)
+})
+```
+
+```{r}
+runMethodsN <- function(pn, nN, truth=NULL){
+  dplyr::bind_rows(lapply(nN, FUN=function(x){
+    rbin <- as.factor(sample.int(x, length(pn), replace=TRUE))
+    runMethods(pn, rbin, truth=truth)
+  }))
+}
+runMethods <- function(pn, rbin, truth=NULL){
+  x <- length(unique(rbin))
+  d <- data.frame(p=pn, bin=rbin, nsplits=x)
+  if(!is.null(truth)) d$truth <- truth
+  d$FDRglb <- p.adjust(pn,method="fdr")
+  d$LSL <- gBH(pn, rbin, pi0 = "LSL")
+  d$TST <- gBH(pn, rbin, pi0 = "TST")
+  a <- try(IHW::ihw(pn, rbin, nfolds=3, covariate_type="nominal", alpha=0.05), silent=TRUE)
+  if(!is(a, "try-error")) d$IHW <- IHW::adj_pvalues(a)
+  d <- dplyr::bind_rows(lapply(split(d, d$bin), \(x){
+    x$FDRsplit <- p.adjust(x$p, method="fdr")
+    x
+  }))
+  d$FDRsplit_adj <- pmin(1,d$FDRsplit * pmax(1,x/rank(d$FDRsplit, ties.method="min")))
+  d
+}
+```
+
+```{r}
+seeds <- c(1,12,123,1234,12345,42,111,120,212,1000)
+names(nN) <- nN <- c(2,5,10,15,20,50,100,200)
+
+bp <- MulticoreParam(min(6,length(seeds)), progress=FALSE)
+simD <- dplyr::bind_rows(bplapply(seeds, BPPARAM=bp, FUN=function(seed){
+  set.seed(seed)
+  pn <- abs(c(runif(74000), rnorm(1000,sd=0.001),
+              rnorm(3000,sd=0.01),rnorm(2000,sd=0.025)))
+  truth <- rep(c(FALSE, TRUE), c(74000,6000))
+  d <- runMethodsN(pn, nN, truth=truth)
+  names(scores) <- scores <- colnames(d)[-1:-4]
+  d$nsplits <- factor(d$nsplits, sort(unique(d$nsplits)))
+  dplyr::bind_rows(lapply(scores, FUN=function(x){
+    d2 <- d[which(d[[x]]<0.05),,drop=FALSE]
+    if(nrow(d2)==0) return(data.frame(nsplits=nN, FDR=rep(0L,length(nN)), power=rep(0L,length(nN))))
+    data.frame( nsplits=nN,
+                rejected=sapply(split(d2,d2$nsplits,drop=FALSE), nrow),
+                FDR=sapply(split(d2,d2$nsplits,drop=FALSE), \(x){
+                  if(nrow(x)==0) return(0L)
+                  sum(!x$truth)/nrow(x)
+                }),
+                power=sapply(split(d2,d2$nsplits,drop=FALSE), \(x){
+                  if(nrow(x)==0) return(0L)
+                  sum(x$truth)/sum(truth)
+                }))
+  }), .id="method")
+}), .id="seed")
+
+
+simI <- dplyr::bind_rows(bplapply(seeds, BPPARAM=bp, FUN=function(seed){
+  set.seed(seed)
+  pn <- abs(c(runif(74000), rnorm(1000,sd=0.001),
+              rnorm(3000,sd=0.01),rnorm(2000,sd=0.025)))
+  truth <- rep(c(FALSE, TRUE), c(74000,6000))
+  bins <- rep(LETTERS[1:8], c(14800,14800,14800,14800,14800,1000,3000,2000))
+  sn <- floor(length(bins)/3)
+  bins[sample.int(74000,sn)] <- sample(LETTERS[5:8], sn, replace=TRUE)
+  bins <- factor(bins)
+  d <- runMethods(pn, bins, truth=truth)
+  names(scores) <- scores <- colnames(d)[-1:-4]
+  dplyr::bind_rows(lapply(scores, FUN=function(x){
+    d2 <- d[which(d[[x]]<0.05),,drop=FALSE]
+    if(nrow(d2)==0) return(data.frame(FDR=0, recall=0))
+    data.frame(FDR=sum(!d2$truth)/nrow(d2), recall=sum(d2$truth)/sum(truth))
+  }), .id="method")
+}), .id="seed")
+
+
+
+simNull <- dplyr::bind_rows(bplapply(seeds, BPPARAM=bp, FUN=function(seed){
+  set.seed(seed)
+  pn <- runif(80000)
+  d <- runMethodsN(pn, nN)
+  names(scores) <- scores <- colnames(d)[-1:-3]
+  d$nsplits <- factor(d$nsplits, sort(unique(d$nsplits)))
+  dplyr::bind_rows(lapply(scores, FUN=function(x){
+    d2 <- d[which(d[[x]]<0.05),,drop=FALSE]
+    if(nrow(d2)==0) return(data.frame(nsplits=nN, FP=rep(0L,length(nN))))
+    data.frame(nsplits=nN, FP=sapply(split(d2,d2$nsplits,drop=FALSE), nrow))
+  }), .id="method")
+}), .id="seed")
+
+save(simNull, simD, simI, file="GBH_sim_res.RData")
+```
+
+The p-values of a simulation with signal looks like this:
+
+```{r}
+set.seed(1)
+pn <- abs(c(runif(74000), rnorm(1000,sd=0.001), rnorm(3000,sd=0.01),rnorm(2000,sd=0.025)))
+hist(pn, xlab="P-value")
+```
+
+
+```{r, fig.width=12, fig.height=5}
+load("GBH_sim_res.RData")
+
+simI2 <- aggregate(simI[,3:4], by=list(method=simI$method), FUN=mean)
+upper <- aggregate(simI[,3:4], by=list(method=simI$method), FUN=max)[,-1]
+lower <- aggregate(simI[,3:4], by=list(method=simI$method), FUN=min)[,-1]
+colnames(upper) <- paste0(colnames(upper), ".upper")
+colnames(lower) <- paste0(colnames(lower), ".lower")
+d <- cbind(simI2, upper, lower)
+p1 <- ggplot(d, aes(recall, 1-FDR, colour=method)) + geom_hline(yintercept=0.95, linetype="dashed") +
+  geom_point() + geom_segment(aes(x=recall.lower, xend=recall.upper, y=1-FDR, colour=method)) +
+  geom_segment(aes(x=recall, y=(1-FDR.lower), yend=(1-FDR.upper), xend=recall)) +
+  coord_cartesian(ylim=c(0.85,1)) + theme_bw() + 
+  labs(y="Precision (1-FDR)", x="Recall (Sensitivity)",
+       title="Simulation with signal", subtitle = "Informative bins")
+
+
+simD2 <- aggregate(simD[,-1:-3], by=simD[,2:3], FUN=mean)
+p2 <- ggplot(simD2, aes(power, 1-FDR, colour=method, label=nsplits)) + geom_hline(yintercept = 0.95, linetype="dashed") +geom_path(size=1.5) + geom_text() + scale_x_sqrt() + theme_bw() +
+  labs(y="Precision (1-FDR)", x="Recall (Sensitivity)",
+       title="Simulation with signal", subtitle="Random bins")
+
+
+p3 <- ggplot(simNull, aes(as.factor(nsplits), FP, fill=method)) + geom_boxplot() + theme_bw() +
+  labs(title="Null simulation (no signal)", subtitle="Random bins", x="Number of random bins", y="Number of false positives")
+(p1 + theme(legend.position = "none")) + (p2 + theme(legend.position = "none")) + p3 + plot_layout(widths = c(3,4,3))
+```
+
+```{r}
+sessionInfo()
+```
+

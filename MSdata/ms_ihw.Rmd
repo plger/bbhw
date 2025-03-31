@@ -1,0 +1,165 @@
+---
+title: "IHW"
+author: "Pierre-Luc"
+date: "2025-01-10"
+output: html_document
+---
+
+```{r setup}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(edgeR)
+  library(BiocParallel)
+  library(IHW)
+  library(ggplot2)
+  library(muscat)
+})
+source("../functions.R")
+```
+
+
+```{r}
+doOneDea <- function(pb, assay=1, minPerGroup=10, minCounts=2000, minRelCounts=0.2){
+  x <- assays(pb)[[assay]]
+  cs <- colSums(x)
+  w <- which(cs>minCounts & cs>(minRelCounts*median(cs)))
+  assays(pb) <- assays(pb)[assay]
+  pb <- pb[,w]
+  x <- x[,w]
+  minSS <- min(table(pb$is_lesion))
+  
+  if(minSS<minPerGroup) return(NULL)
+  if(useSex <- min(table(pb$sex)) > 1){
+    mm <- model.matrix(~sex+is_lesion, data=as.data.frame(colData(pb)))
+  }else{
+    mm <- model.matrix(~is_lesion, data=as.data.frame(colData(pb)))
+  }
+  if(minSS>3 & median(cs)>100000){
+    mm <- tryCatch({
+      nsv <- ifelse(minSS>10 & median(cs)>100000, 2, 1)
+      set.seed(123)
+      pb <- SEtools::svacor(pb, ~sex+is_lesion, ~sex, n.sv=nsv)
+      svs <- grep("^SV[0-9]", colnames(colData(pb)), value=TRUE)
+      f <- as.formula(paste0(ifelse(useSex,"~sex+","~"), paste(c(svs,"is_lesion"), collapse="+")))
+      mm <- model.matrix(f, data=as.data.frame(colData(pb)))      
+    }, error=function(e){
+      mm
+    })
+  }
+  dds <- calcNormFactors(DGEList(assay(pb)))
+  dds <- dds[filterByExpr(dds,mm),]
+  dds <- estimateDisp(dds, mm)
+  fit <- glmQLFit(dds,mm)
+  d <- as.data.frame(topTags(glmQLFTest(fit, "is_lesionTRUE"), Inf))
+  d$gene <- row.names(d)
+  d
+}
+```
+
+
+```{r objPrep, eval=FALSE}
+pb <- readRDS("Will_pb_broad_2023-04-13.rds")
+pb <- pb[,which(pb$matter=="WM" & pb$lesion_type %in% c("WM","AL","CAL","CIL"))]
+pb$is_lesion <- pb$lesion_type != "WM"
+assays(pb) <- assays(pb)[1:7]
+
+## no proportion adjustment:
+# b <- SummarizedExperiment(list(counts=Reduce("+",assays(pb))), colData=colData(pb))
+
+## Create abundance-balanced bulks:
+cs <- sapply(assays(pb), colSums)
+expected.prop <- apply(cs,2,median)
+expected.prop <- expected.prop/sum(expected.prop)
+sf <- t(t(cs/rowSums(cs))/expected.prop)
+sf[sf<0.1] <- 0.1
+b <- lapply(setNames(assayNames(pb), assayNames(pb)), \(a){
+  t(t(assay(pb,a))/sf[,a])
+})
+b <- SummarizedExperiment(list(counts=Reduce("+",b)), colData=colData(pb))
+
+set.seed(123)
+b <- SEtools::svacor(b, ~sex+is_lesion, ~sex, numSVmethod="leek")
+dds <- calcNormFactors(DGEList(assay(b)))
+mm <- model.matrix(~SV1+SV2+sex+is_lesion, data=as.data.frame(colData(b)))
+dds <- dds[filterByExpr(dds,mm,min.count=20),]
+dds <- estimateDisp(dds, mm)
+fit <- glmFit(dds,mm)
+res <- as.data.frame(topTags(glmLRT(fit, "is_lesionTRUE"), Inf))
+b <- b[row.names(res),]
+rowData(b)$PValue <- res$PValue
+rowData(b)$FDR <- res$FDR
+rowData(b)$logFC <- res$logFC
+saveRDS(b, file="Will_bulk.rds")
+
+pbRes <- bplapply(setNames(assayNames(pb),assayNames(pb)),
+                  BPPARAM=MulticoreParam(6, progress=TRUE), FUN=\(x){
+  tryCatch(doOneDea(pb, x), error=\(e){ warning(e); NULL })
+})
+res2 <- dplyr::bind_rows(pbRes[!sapply(pbRes, is.null)], .id="celltype")
+res2$isDEG <- res2$FDR<0.1
+res2$isDEG[which(res2$FDR>=0.1 & res2$FDR<0.5)] <- NA
+saveRDS(res2, "pbfull_res.rds")
+```
+
+
+```{r}
+pb <- readRDS("Will_pb_broad_2023-04-13.rds")
+pb <- pb[,which(pb$matter=="WM" & pb$lesion_type %in% c("WM","AL","CAL","CIL"))]
+pb$is_lesion <- pb$lesion_type != "WM"
+assays(pb) <- assays(pb)[1:7]
+
+pbResFull <- readRDS("pbfull_res.rds")
+names(wCt) <- wCt <- names(which(sapply(split(pbResFull$isDEG, pbResFull$celltype), sum, na.rm=TRUE)>2))
+
+bulk <- readRDS("Will_bulk.rds")
+bulk <- as.data.frame(rowData(bulk))
+
+rs <- sapply(assays(pb), rowSums)
+props <- (1L+rs)/(rowSums(1L+rs))
+```
+
+
+```{r, eval=FALSE}
+set.seed(123)
+ssres <- bplapply(1:12, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), FUN=function(s){
+  sw <- c(sample(which(pb$is_lesion),5),sample(which(!pb$is_lesion),4))
+  d <- lapply(wCt, FUN=\(x){
+    tryCatch(doOneDea(pb[,sw], x, minPerGroup=4), error=\(e){ warning(e); NULL })
+  })
+  dplyr::bind_rows(d[!sapply(d, is.null)], .id="celltype")
+})
+saveRDS(ssres, file="Will_res.RData")
+```
+
+
+```{r}
+load("Will_res.RData")
+set.seed(123)
+ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), FUN=function(x){
+  x <- x[,c("celltype", "gene", "cluster_id", "PValue", "logFC", "FDR")]
+  x$FDR.global <- p.adjust(x$PValue, method="fdr")
+  x <- dplyr::bind_rows(lapply(split(x, x$cluster_id), \(x){
+    x$FDR.local <- p.adjust(x$PValue, method="fdr")
+    x
+  }))
+  .bbhwAll(x, bulk, pb=props)
+})
+
+
+
+m <- dplyr::bind_rows(ssres, .id="seed")
+m <- merge(m, pbResFull[,c("celltype","gene","isDEG")],
+           by=c("celltype","gene"))
+m <- m[!is.na(m$isDEG),]
+scores <- grep("^FDR|^padj\\.", colnames(m), value=TRUE)
+m <- m[order(m$celltype, m$PValue),]
+st <- getStats(m[,intersect(scores,colnames(m))], m$isDEG, celltype=m$celltype, roundNd = NULL, noRankAt1=TRUE)
+
+aucs <- dplyr::bind_rows(lapply(split(st, paste(st$celltype, st$score)), \(x){
+  w <- which(x$label)
+  data.frame(celltype=x$celltype[1], method=x$score[1],
+             AUC=PRROC::pr.curve(scores.class0=1-x$nominal[w], scores.class1=1-x$nominal[-w])$auc.integral)
+}))
+
+save(ssres, st, aucs, file="MS.res.RData")
+```

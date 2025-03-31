@@ -1,0 +1,74 @@
+---
+title: "IHW"
+author: "Pierre-Luc"
+date: "2025-01-10"
+output: html_document
+---
+
+```{r setup}
+suppressPackageStartupMessages({
+  library(BiocParallel)
+  library(ggplot2)
+  library(muscat)
+  library(SummarizedExperiment)
+})
+source("../functions.R")
+```
+
+
+```{r}
+pb <- readRDS("Will_pb_broad_2023-04-13.rds")
+pb <- pb[,which(pb$matter=="WM" & pb$lesion_type %in% c("WM","AL","CAL","CIL"))]
+pb$is_lesion <- pb$lesion_type != "WM"
+assays(pb) <- assays(pb)[1:7]
+
+pbResFull <- readRDS("pbfull_res.rds")
+names(wCt) <- wCt <- names(which(sapply(split(pbResFull$isDEG, pbResFull$celltype), sum, na.rm=TRUE)>2))
+
+bulk <- readRDS("Will_bulk.rds")
+bulk <- as.data.frame(rowData(bulk))
+
+rs <- sapply(assays(pb), rowSums)
+props <- (1L+rs)/(rowSums(1L+rs))
+```
+
+```{r}
+load("Will_res.RData")
+set.seed(123)
+names(nBins) <- nBins <- c(5,8,12,16,20,30,50,100)
+ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), FUN=function(x){
+  x <- x[,c("celltype", "gene", "cluster_id", "PValue", "logFC", "FDR")]
+  x$FDR.global <- p.adjust(x$PValue, method="fdr")
+  x <- dplyr::bind_rows(lapply(split(x, x$cluster_id), \(x){
+    x$FDR.local <- p.adjust(x$PValue, method="fdr")
+    x
+  }))
+  for(m in c("combined","PAS")){
+    adjM <- "gBH.LSL"
+    if(m=="PAS") adjM <- c(adjM, "IHW")
+    for(f in adjM){
+      for(n in nBins){
+        tryCatch({
+          x <- bbhw(x, bulk, bin.method = m, correction.method = f, pb=props, nbins=n, verbose=FALSE)
+          x[[paste("padj",f,m,n,sep=".")]] <- x$padj
+          x
+        }, error=function(e){
+          message(m, " ", f, " ", n, " failed")
+          x
+        })
+      }
+    }
+  }
+  x
+})
+truth <- pbResFull[!grepl("Excitatory", pbResFull$celltype),]
+m <- dplyr::bind_rows(ssres, .id="seed")
+m <- merge(m, truth[,c("celltype","gene","isDEG")], by=c("celltype","gene"))
+m <- m[!is.na(m$isDEG),]
+scores <- setdiff(grep("^padj\\.", colnames(m), value=TRUE), "FDR")
+m <- m[order(m$celltype, m$PValue),]
+
+ths <- getThStats(ssres, truth)
+save(ths, ssres, file="MS.nbins.RData")
+plotThStats(ths)
+```

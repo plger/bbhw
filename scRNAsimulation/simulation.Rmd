@@ -1,0 +1,156 @@
+---
+title: "Simulation 2"
+author: "Pierre-Luc"
+date: "2025-02-10"
+output: html_document
+---
+
+```{r setup}
+suppressPackageStartupMessages({
+  library(muscat)
+  library(SingleCellExperiment)
+  library(edgeR)
+  library(BiocParallel)
+  library(IHW)
+  library(ggplot2)
+})
+source("../functions.R")
+```
+
+```{r, eval=FALSE}
+ref <- readRDS("~/bioinfo/robinson/teaching/2024/material/week13-09dec2024/week13.SCE.processed.rds")
+ref <- ref[,ref$group_id=="WT"]
+ref$cluster_id <- ref$cluster2
+ref$group_id <- NULL
+ref <- prepSim(ref)
+saveRDS(ref, "refPrepped4Sim.rds")
+```
+
+```{r, eval=FALSE}
+ref <- readRDS("refPrepped4Sim.rds")
+probs <- list( cluster=c(0.8,0.2),
+               sample=rep(0.25,8),
+               group=c(0.5,0.5) )
+set.seed(123)
+sim <- bplapply(list(c(0.2,0), c(0,0.2)), BPPARAM=MulticoreParam(2), FUN=\(x){
+  simData(ref, nc=16000, ns=8, nk=2, probs=probs, p_type=0.2, force=TRUE,
+               dd=TRUE, p_dd=c(0.80,0,0.2,0,0,0), paired=TRUE, rel_lfc=x)
+})
+sim1 <- sim[[1]]
+sim2 <- sim[[2]]
+sim3 <- simData(ref, nc=3200, ns=8, nk=1, probs=c(list(1),probs[-1]), force=TRUE,
+               dd=TRUE, p_dd=c(0.9,0,0.1,0,0,0), paired=TRUE, rel_lfc=0.15)
+sim4 <- simData(ref, nc=12800, ns=8, nk=1, probs=c(list(1),probs[-1]), force=TRUE,
+               dd=TRUE, p_dd=c(1,0,0,0,0,0), paired=TRUE, rel_lfc=0)
+
+gi1 <- metadata(sim1)$gene_info
+levels(gi1$cluster_id) <- levels(sim1$cluster_id) <- c("largeAffected", "smallUnaffected")
+gi2 <- metadata(sim2)$gene_info
+levels(gi2$cluster_id) <- levels(sim2$cluster_id) <- c("largeUnaffected1", "smallAffected1")
+gi3 <- metadata(sim3)$gene_info
+levels(gi3$cluster_id) <- levels(sim3$cluster_id) <- c("smallAffected2")
+levels(sim4$cluster_id) <- "largeUnaffected2"
+rowData(sim1) <- rowData(sim2) <- rowData(sim3) <- rowData(sim4) <- NULL
+sim <- cbind(sim1,sim2,sim3,sim4)
+saveRDS(sim, file="simulated2.SCE.rds")
+de <- rbind(gi1[which(gi1$category=="de"),], gi2[which(gi2$category=="de"),],
+            gi3[which(gi3$category=="de"),])
+de <- de[,c("gene","cluster_id","logFC")]
+colnames(de)[2] <- "celltype"
+saveRDS(de[which(de$logFC!=0),], file="simulated2.truth.rds")
+
+b <- scuttle::sumCountsAcrossCells(sim, sim$sample_id)
+saveRDS(b, file="simulated2.bulk.rds")
+pb <- aggregateData(sim)
+saveRDS(pb, file="simulated2.PB.rds")
+
+sce <- scater::logNormCounts(sce)
+sce <- scater::runPCA(sce, 10, ntop=3000)
+sce <- scater::runUMAP(sce, dimred="PCA", BNPARAM=BiocNeighbors::AnnoyParam())
+rd <- cbind(as.data.frame(colData(sce)), reducedDim(sce, "UMAP"), reducedDim(sce, "PCA")[,1:2])
+rd$cluster_id <- factor(rd$cluster_id, sort(levels(rd$cluster_id)))
+saveRDS(rd, file="simulated2.dimRed.rds")
+
+b <- readRDS("simulated2.bulk.rds")
+group <- grepl("B$",colnames(b))
+mm <- model.matrix(~group)
+dds <- calcNormFactors(DGEList(assay(b)))
+dds <- dds[filterByExpr(dds, mm),]
+dds <- estimateDisp(dds, mm)
+fit <- glmQLFit(dds,mm)
+d <- as.data.frame(topTags(glmQLFTest(fit), Inf))
+saveRDS(d, "simulated2.bulk.DEA.rds")
+```
+
+
+# 2 vs 2
+
+```{r}
+pb <- readRDS("simulated2.PB.rds")
+truth <- readRDS("simulated2.truth.rds")
+bulk <- readRDS("simulated2.bulk.DEA.rds")
+bulk <- setNames(bulk$PValue*sign(bulk$logFC), row.names(bulk))
+
+rs <- sapply(assays(pb), rowSums)
+props <- (1L+rs)/(rowSums(1L+rs))
+```
+
+
+```{r, eval=FALSE}
+set.seed(123)
+ssres <- bplapply(1:12, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=FALSE), FUN=function(s){
+  sw <- c(sample(which(pb$group_id=="A"),2),sample(which(pb$group_id=="B"),2))
+  pb <- pb[,sw]
+  d <- lapply(setNames(assayNames(pb),assayNames(pb)), FUN=\(x){
+    tryCatch({
+        assays(pb) <- assays(pb)[x]
+        mm <- model.matrix(~group_id, data=as.data.frame(colData(pb)))
+        dds <- calcNormFactors(DGEList(assay(pb)))
+        dds <- dds[filterByExpr(dds,mm),]
+        dds <- estimateDisp(dds, mm)
+        fit <- glmQLFit(dds,mm)
+        d <- as.data.frame(topTags(glmQLFTest(fit), Inf))
+        d$gene <- row.names(d)
+        d
+    }, error=\(e){ warning(e); NULL })
+  })
+  dplyr::bind_rows(d[!sapply(d, is.null)], .id="celltype")
+})
+saveRDS(ssres, file="ssres.rds")
+```
+
+
+```{r}
+ssres <- readRDS("ssres.rds")
+set.seed(123)
+ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=FALSE), FUN=function(x){
+  x <- x[,c("celltype", "gene", "PValue", "logFC", "FDR")]
+  x$FDR.global <- p.adjust(x$PValue, method="fdr")
+  x <- dplyr::bind_rows(lapply(split(x, x$celltype), \(x){
+    x$FDR.local <- p.adjust(x$PValue, method="fdr")
+    x
+  }))
+  .bbhwAll(x, bulk, pb=props, verbose = FALSE)
+})
+
+m <- dplyr::bind_rows(ssres, .id="seed")
+m <- merge(m, truth, by=c("celltype","gene"), all.x=TRUE)
+m$isDEG <- !is.na(m$logFC.y)
+scores <- grep("^FDR|^padj\\.", colnames(m), value=TRUE)
+m <- m[order(m$celltype, m$PValue),]
+st <- getStats(m[,intersect(scores,colnames(m))], m$isDEG, celltype=m$celltype, roundNd = NULL, noRankAt1=TRUE)
+
+aucs <- dplyr::bind_rows(lapply(split(st, paste(st$celltype, st$score)), \(x){
+  w <- which(x$label)
+  data.frame(celltype=x$celltype[1], method=x$score[1],
+             AUC=PRROC::pr.curve(scores.class0=1-x$nominal[w], scores.class1=1-x$nominal[-w])$auc.integral)
+}))
+
+save(ssres, st, aucs, file="simulated2.res.RData")
+```
+
+
+```{r}
+sessionInfo()
+```
+

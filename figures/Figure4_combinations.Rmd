@@ -1,0 +1,102 @@
+---
+title: "Figure4"
+author: "Pierre-Luc"
+date: "2025-03-27"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(patchwork)
+  library(cowplot)
+  library(ComplexHeatmap)
+})
+source("../functions.R")
+```
+
+
+```{r}
+load("plotDat.RData")
+d <- dplyr::bind_rows(list("Simulated data"=thsS, "Subsampled MS data"=ths), .id="Dataset")
+d <- d[!grepl("raw|^FDR$", d$method),]
+levels(d$method) <- renameScores(gsub("padj\\.", "", levels(d$method)))
+
+fps <- reshape2::dcast(FPsS, method~celltype, value.var = "FPs", fun.aggregate = mean, na.rm=TRUE)
+fps <- fps[!grepl("raw|^FDR$",fps[,1]),]
+row.names(fps) <- renameScores(fps[,1])
+fps <- as.matrix(fps[,-1])
+fps <- fps[row.names(fps) %in% levels(d$method),]
+
+da <- data.frame(row.names=unique(d$celltype),
+                 Dataset=ifelse(grepl("Affected",unique(d$celltype)), "simulation", "downsampled\nread data"))
+da0 <- data.frame(row.names=colnames(fps), Dataset=rep("simulation", ncol(fps)))
+dacols <- setNames(c("#4477AA","#CC6677"), unique(da$Dataset))
+
+ml <- lapply(split(d, d$variable), FUN=function(x){
+  m <- reshape2::dcast(x, formula = celltype~method, value.var="value")
+  row.names(m) <- m[,1]
+  t(m[,-1])
+})
+m <- do.call(cbind, lapply(ml, \(x){
+  rm <- matrixStats::colMedians(x, na.rm=TRUE)
+  for(i in seq_along(rm)){
+    x[which(is.na(x[,i])),i] <- rm[i]
+  }
+  x
+}))
+mo <- row.names(m)[order(rowMeans(m, na.rm=TRUE) + matrixStats::rowMedians(m, na.rm=TRUE))]
+wPrior <- ifelse(grepl("^FDR\\.glb$|^FDR\\.loc$",mo), "no prior", "using bulk prior")
+
+cols <- setNames(list(viridis::magma(100), viridis::inferno(100), viridis::viridis(100)),
+                 names(ml))
+h0 <- Heatmap(fps[mo,], name="False\npostivies",cluster_columns=FALSE, cluster_rows = FALSE, 
+              col=circlize::colorRamp2(c(0,max(fps,na.rm=TRUE)), colors = c("white","darkred")),
+              column_title="FPs in\nnull",
+              column_names_gp=gpar(fontsize=9), row_split=wPrior,
+              top_annotation = HeatmapAnnotation(df=da0, col=list(Dataset=dacols),
+                                                 show_annotation_name=FALSE))
+hl <- lapply(names(ml), FUN=function(x){
+  m <- ml[[x]][mo,]
+  Heatmap(m, column_split=ifelse(grepl("Affected",colnames(m)), "Simulation", "MS data"), name=x, 
+          cluster_columns=FALSE, cluster_rows = FALSE, col=cols[[x]], column_title = x,
+          column_names_gp=gpar(fontsize=9), row_split=wPrior, row_names_gp=gpar(fontsize=9),
+          top_annotation = HeatmapAnnotation(df=da[colnames(m),,drop=FALSE], col=list(Dataset=dacols), show_annotation_name=x==names(ml)[length(ml)]))
+})
+
+#draw(Reduce("+", c(list(h0),hl)), merge=TRUE)
+```
+
+```{r}
+load("../scRNAsimulation/sim.nbins.RData")
+ths1 <- ths
+load("../MSdata/MS.nbins.RData")
+ths <- dplyr::bind_rows(list(Simulation=ths1, "MS data"=ths), .id="Dataset")
+ths$celltype <- paste(ths$Dataset, ths$celltype, sep="\n")
+ths <- ths[!grepl("combined|^FDR$|^FDR\\.global$",ths$method),]
+ths$method <- droplevels(ths$method)
+ths$nBins <- suppressWarnings(as.integer(gsub(".+\\.","",ths$method)))
+ths$nBins[is.na(ths$nBins)] <- 1L
+ths$method2 <- gsub("padj\\.|\\.[0-9]+","",ths$method)
+ths <- ths[order(ths$method2, ths$nBins),]
+ths$method <- factor(as.character(ths$method), unique(ths$method))
+
+pb <- ggplot(ths[ths$variable %in% c("precision","recall"),], aes(method2, value, fill=nBins, group=method)) + 
+  geom_col(position = "dodge") + 
+    facet_grid(variable~celltype, scales="free_y") + theme_bw() +
+    theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5), axis.title.x=element_blank()) + 
+    scale_y_continuous(breaks=scales::pretty_breaks(2)) +
+    scale_fill_viridis_c(trans="sqrt", breaks=c(1,25,50,100))
+
+```
+
+
+
+```{r, fig.width=10, fig.height=12}
+pdf("Figure4_combinations.pdf", width=10, height=12)
+plot_grid( grid.grabExpr(draw(Reduce("+", c(list(h0),hl)), merge=TRUE)), 
+           pb,
+           nrow=2, rel_heights=c(3,2), scale=0.95, labels="AUTO")
+dev.off()
+```
+

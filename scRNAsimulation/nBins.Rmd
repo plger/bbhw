@@ -1,0 +1,70 @@
+---
+title: "Simulation 2 nbins"
+author: "Pierre-Luc"
+output: html_document
+---
+
+```{r setup}
+suppressPackageStartupMessages({
+  library(BiocParallel)
+  library(ggplot2)
+  library(muscat)
+  library(edgeR)
+  library(SummarizedExperiment)
+})
+source("../functions.R")
+```
+
+# 2 vs 2
+
+```{r}
+pb <- readRDS("simulated2.PB.rds")
+truth <- readRDS("simulated2.truth.rds")
+bulk <- readRDS("simulated2.bulk.DEA.rds")
+bulk <- setNames(bulk$PValue*sign(bulk$logFC), row.names(bulk))
+
+rs <- sapply(assays(pb), rowSums)
+props <- (1L+rs)/(rowSums(1L+rs))
+```
+
+```{r}
+ssres <- readRDS("ssres.rds")
+set.seed(123)
+names(nBins) <- nBins <- c(5,8,12,16,20,30,50,100)
+ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE),
+                FUN=function(x){
+  x <- x[,c("celltype", "gene", "PValue", "logFC", "FDR")]
+  x$FDR.global <- p.adjust(x$PValue, method="fdr")
+  x <- dplyr::bind_rows(lapply(split(x, x$celltype), \(x){
+    x$FDR.local <- p.adjust(x$PValue, method="fdr")
+    x
+  }))
+  for(m in c("combined","PAS")){
+    adjM <- "gBH.LSL"
+    if(m=="PAS") adjM <- c(adjM, "IHW")
+    for(f in adjM){
+      for(n in nBins){
+        tryCatch({
+          x <- bbhw(x, bulk, bin.method = m, correction.method = f, pb=props, nbins=n, verbose=FALSE)
+          x[[paste("padj",f,m,n,sep=".")]] <- x$padj
+          x
+        }, error=function(e){
+          message(m, " ", f, " ", n, " failed")
+          x
+        })
+      }
+    }
+  }
+  x
+})
+
+ths <- getThStats(ssres, truth)
+save(ths, ssres, file="sim.nbins.RData")
+plotThStats(ths)
+```
+
+
+```{r}
+sessionInfo()
+```
+

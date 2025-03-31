@@ -1,0 +1,91 @@
+---
+title: "Figure1"
+author: "Pierre-Luc"
+date: "2025-03-27"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(patchwork)
+  library(cowplot)
+  library(muscat)
+  library(IHW)
+  library(BiocParallel)
+})
+register(MulticoreParam(6, progress=TRUE))
+```
+
+```{r, fig.width=10, fig.height=4}
+a <- readRDS("../stressData/CRS_neuronal_DEAs.rds")
+b <- a[a$cluster_id==a$cluster_id[[1]],]
+b$FDR <- p.adjust(b$p_val, method="fdr")
+names(nN) <- nN <- c(2,5,10,20,50,100,200)
+set.seed(123)
+test <- dplyr::bind_rows(bplapply(nN, FUN=function(x){
+    i <- sample.int(nrow(b))
+    b$bin <- cut(seq_along(b$p_val),x,include.lowest = TRUE)
+    d <- dplyr::bind_rows(lapply(
+      split(b$p_val[i], b$bin), \(p){
+        data.frame(p_val=p, FDRsplit=p.adjust(p, method="fdr"), ranksplit=rank(p))
+    }), .id="bin")
+    a <- ihw(d$p_val, as.factor(d$bin), alpha=0.05)
+    d$IHW <- adj_pvalues(a)
+    d$full <- b$FDR[i]
+    d$adjusted <- pmin(1,d$FDRsplit * pmax(1,as.integer(x)/rank(d$FDRsplit, ties.method="min")))
+    d$LSL <- gBH(d$p_val, d$bin, pi0 = "LSL")
+    d$TST <- gBH(d$p_val, d$bin, pi0 = "TST")
+    d[i,]
+}), .id="nsplits")
+test$nsplits <- as.integer(test$nsplits)
+test2 <- reshape2::melt(test, id.vars=c("full","nsplits"), measure.vars = c("FDRsplit","adjusted","LSL","TST","IHW"))
+test2$variable <- as.factor(test2$variable)
+levels(test2$variable)[2] <- "FDRsplit-adjusted"
+
+p1 <- ggplot(test2, aes(-log10(value), -log10(full), color=nsplits, group=nsplits)) +
+  geom_abline(slope=1) + ggrastr::geom_point_rast() + geom_smooth() + theme_classic() +
+  scale_color_viridis_c(trans="log", breaks=c(2,10,50,200,1000)) + facet_wrap(~variable, nrow=2, scales="free_x") +
+  theme(legend.position = c(1, 0), legend.justification = c(1, 0), legend.direction = "horizontal") +
+  labs(y="-log10(adjusted p-values)\ncomputed on all hypotheses", color="# of\nsplits",
+       x="-log10(adjusted p-values) computed separately for `nsplits` random subsets of the hypotheses")
+```
+
+```{r, fig.width=10, fig.height=2.5}
+load("../toySims/GBH_sim_res.RData")
+set.seed(1)
+pDists <- data.frame(type=rep(factor(c("With signal","Null simulation")), each=80000),
+                     p=c(abs(c(runif(74000), rnorm(1000,sd=0.001), rnorm(3000,sd=0.01),rnorm(2000,sd=0.025))),runif(80000)))
+
+p2 <- ggplot(pDists, aes(p)) + geom_histogram(breaks=(0:20)/20, alpha=0.8, fill="darkblue") +
+  scale_x_continuous(breaks=scales::pretty_breaks(4)) + scale_y_continuous(breaks=scales::pretty_breaks(2)) + 
+  coord_cartesian(expand=0) + theme_classic() + facet_wrap(~type, nrow=2) + 
+  labs(x="p-values (n=80000)", y="Count") + 
+  theme(legend.position = "none", strip.background = element_blank(), strip.text=element_text(size=11))
+
+
+simI2 <- aggregate(simI[,3:4], by=list(method=simI$method), FUN=mean)
+upper <- aggregate(simI[,3:4], by=list(method=simI$method), FUN=max)[,-1]
+lower <- aggregate(simI[,3:4], by=list(method=simI$method), FUN=min)[,-1]
+colnames(upper) <- paste0(colnames(upper), ".upper")
+colnames(lower) <- paste0(colnames(lower), ".lower")
+d <- cbind(simI2, upper, lower)
+p3 <- ggplot(d, aes(recall, 1-FDR, colour=method)) + geom_hline(yintercept=0.95, linetype="dashed") +
+  geom_point() + geom_segment(aes(x=recall.lower, xend=recall.upper, y=1-FDR, colour=method)) +
+  geom_segment(aes(x=recall, y=(1-FDR.lower), yend=(1-FDR.upper), xend=recall)) +
+  coord_cartesian(ylim=c(0.85,1)) + theme_bw() + theme(legend.position = "none") +
+  labs(y="Precision (1-FDR)", x="Recall (Sensitivity)",
+       title="Simulation with signal", subtitle = "Informative bins")
+
+p4 <- ggplot(simNull, aes(as.factor(nsplits), FP, fill=method)) + geom_boxplot() + theme_bw() +
+  labs(title="Null simulation (no signal)", subtitle="Random bins", x="Number of random bins", y="Number of false positives")
+
+row2 <- plot_grid(p2, p3, p4, nrow=1, scale=0.95, labels=LETTERS[2:4], rel_widths=c(3,5,6))
+```
+
+
+```{r, eval=FALSE, fig.width=10, fig.height=7}
+pdf("Figure2.pdf", width=10, height=7)
+plot_grid(p1, row2, nrow=2, rel_heights = c(4, 2.5), labels=c("A",NA), scale=c(0.95,1))
+dev.off()
+```

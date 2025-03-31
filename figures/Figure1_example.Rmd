@@ -1,0 +1,58 @@
+---
+title: "Figure1"
+author: "Pierre-Luc"
+date: "2025-03-27"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(patchwork)
+  library(cowplot)
+  library(muscat)
+})
+```
+
+```{r, fig.width=8, fig.height=3}
+a <- readRDS("../stressData/CRS_neuronal_DEAs.rds")
+ba <- readRDS(file="../stressData/CRS_bulkPvals.rds")
+q <- quantile(ba, (0:4)/4, na.rm=TRUE)
+sq <- data.frame(xmin=q[1:4], xmax=q[-1], ymin=rep(c(0,3450),each=4), ymax=3950,
+                 bin=1:4, isTop=rep(c(FALSE,TRUE),each=4), lab=1:4)
+cols <- setNames(c(RColorBrewer::brewer.pal(4, "Spectral"),"darkgrey"), 1:5)
+p1 <- ggplot(data.frame(p=ba)) + 
+  geom_rect(data=sq, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, fill=factor(bin), alpha=isTop)) +
+  geom_text(data=sq[1:4,], aes(x=(xmin+xmax)/2, y=3700, label=lab)) + 
+  scale_alpha_discrete(range=c(0.5,1), guide="none") + 
+  geom_histogram(aes(p), breaks=(0:30)/30, alpha=0.8, fill="black") +
+  geom_vline(xintercept = q, colour="black", linetype="dashed") + 
+  scale_x_continuous(breaks=scales::pretty_breaks(4)) + 
+  scale_fill_manual(values=cols) + coord_cartesian(expand=0) + theme_classic() +
+  labs(fill="Bulk-based bin", x="Bulk p-values", y="Count") + theme(legend.position = "none")
+
+p1b <- ggplot(a, aes(p_val)) + geom_histogram(breaks=(0:30)/30, alpha=0.8, fill="black") +
+  scale_x_continuous(breaks=scales::pretty_breaks(4)) + scale_y_continuous(breaks=scales::pretty_breaks(2)) + 
+  coord_cartesian(expand=0) + theme_classic() +
+  labs(x="Single-cell (pseudobulk) p-values", y="Count") + theme(legend.position = "none")
+
+a$bulkBin <- cut(a$bulkFDR, breaks = quantile(a$bulkFDR, (0:4)/4, na.rm=TRUE),
+                 include.lowest = TRUE, labels = FALSE)
+a$bulkBin[is.na(a$bulkBin)] <- 5L
+a$bulkBin2 <- factor(c("Bin1","Bin2","Bin3","Bin4","undetected\nin bulk"))[a$bulkBin]
+names(cols) <- levels(a$bulkBin2)
+p2 <- ggplot(a, aes(x=p_val, y=..density.., fill=bulkBin2)) + geom_histogram(breaks=(0:10)/10) + 
+  scale_fill_manual(values=cols) + coord_cartesian(expand=0) + 
+  facet_wrap(~bulkBin2, nrow=1) + labs(x="Single-cell (pseudo-bulk) p-values") + theme_classic() +
+  scale_x_continuous(breaks=c(0,0.5,1), labels = c("0","0.5","1")) +
+  labs(fill="Bulk-based bin", y="Relative frequency") + 
+  guides(fill = guide_legend(title.position="top", title.hjust = 0.5)) +
+  theme(legend.position = "bottom", strip.background = element_blank(), legend.box="horizontal")
+```
+
+```{r, eval=FALSE, fig.width=9, fig.height=3}
+pdf("Figure1.pdf", width=9, height=3)
+plot_grid(plot_grid(p1b,p1,nrow=2,rel_heights = c(2,3), scale=0.9, labels="AUTO"),
+            p2, scale=c(1,0.9), labels=c(NA,"C"), nrow=1, rel_widths = c(2,3))
+dev.off()
+```
