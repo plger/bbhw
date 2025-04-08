@@ -89,7 +89,9 @@ b <- b[row.names(res),]
 rowData(b)$PValue <- res$PValue
 rowData(b)$FDR <- res$FDR
 rowData(b)$logFC <- res$logFC
+rowData(b)$predFC <- predFC(dds, mm)[row.names(b),"is_lesionTRUE"]
 saveRDS(b, file="Will_bulk.rds")
+
 
 pbRes <- bplapply(setNames(assayNames(pb),assayNames(pb)),
                   BPPARAM=MulticoreParam(6, progress=TRUE), FUN=\(x){
@@ -135,6 +137,22 @@ saveRDS(ssres, file="Will_res.RData")
 ```{r}
 load("Will_res.RData")
 set.seed(123)
+bulk2 <- setNames(rank(-abs(bulk$predFC))*sign(bulk$predFC), row.names(bulk))
+bulk2 <- bulk2/max(abs(bulk2))
+sslfc <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), FUN=function(x){
+  x <- x[,c("celltype", "gene", "cluster_id", "PValue", "logFC", "FDR")]
+  .bbhwAll(x, bulk2, pb=props)
+})
+m <- dplyr::bind_rows(sslfc, .id="seed")
+m <- merge(m, pbResFull[,c("celltype","gene","isDEG")],
+           by=c("celltype","gene"))
+m <- m[!is.na(m$isDEG),]
+scores <- grep("^FDR|^padj\\.", colnames(m), value=TRUE)
+m <- m[order(m$celltype, m$PValue),]
+st <- getStats(m[,intersect(scores,colnames(m))], m$isDEG, celltype=m$celltype, roundNd = NULL, noRankAt1=TRUE)
+save(sslfc, st, file="lfc_res.rds")
+
+set.seed(123)
 ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), FUN=function(x){
   x <- x[,c("celltype", "gene", "cluster_id", "PValue", "logFC", "FDR")]
   x$FDR.global <- p.adjust(x$PValue, method="fdr")
@@ -144,7 +162,6 @@ ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE),
   }))
   .bbhwAll(x, bulk, pb=props)
 })
-
 
 
 m <- dplyr::bind_rows(ssres, .id="seed")
@@ -163,3 +180,17 @@ aucs <- dplyr::bind_rows(lapply(split(st, paste(st$celltype, st$score)), \(x){
 
 save(ssres, st, aucs, file="MS.res.RData")
 ```
+
+
+```{r}
+load("lfc_res.rds")
+st2 <- st[st$score=="padj.sig.LSL.loc",]
+st2$score <- "Predicted logFC"
+load("MS.res.RData")
+st1 <- st[st$score=="padj.sig.LSL.loc",]
+st1$score <- "significance"
+m <- rbind(st1, st2)
+plotPR(m, facet_scores = FALSE, noLine = TRUE, nrow=1) + 
+    labs(title="Simulated data", x="Recall (i.e. sensitivity)", y="Precision (1-FDR)")
+```
+

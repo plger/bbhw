@@ -116,6 +116,51 @@ plotPR <- function(st, ths=c(0.05,0.1,0.25), facet_scores=TRUE, sqrty=FALSE, noL
 }
 
 
+tprPlot <- function(st, ths=c(0.05,0.1,0.25), sqrty=TRUE, sqrtx=FALSE, 
+                    legend.inside=TRUE, nrow=2, leg.spacing=0.35, ...){
+  st <- st[!grepl("Excitatory",st$celltype),]
+  if(!is.null(st$Dataset))
+    st$celltype <- factor(st$celltype, unique(st$celltype[order(st$Dataset)]))
+  if(!is.null(ths)){
+    thsd <- dplyr::bind_rows(lapply(split(st, st[,c("celltype","score")]), FUN=function(x){
+      x[unlist(lapply(ths, FUN=\(th){
+        w <- which(x$nominal<=th)
+        if(length(w)==0) return(c())
+        max(w)
+      })),]
+    }))
+    thsd$th <- factor(sapply(thsd$nominal, FUN=function(x) ths[which.min(abs(x-ths))]))
+  }
+  p <- ggplot(st, aes(fdr, recall, colour=score, linetype=score)) + 
+    facet_wrap(~celltype, nrow=nrow, ...) + theme_bw() +
+    theme(panel.grid.minor = element_blank()) +
+    geom_vline(xintercept=c(0.05,0.1,0.25), linetype="dashed", colour="darkgrey") +
+    ggrastr::geom_point_rast(size=0.03)
+  if(!is.null(ths)) p <- p + geom_point(aes(shape=th), data=thsd, size=3)
+  if(sqrty) p <- p + scale_y_sqrt(breaks=scales::pretty_breaks(4))
+  if(sqrtx){
+    p <- p + scale_x_sqrt(breaks=c(0,0.2,0.5,1), labels=c("0",".2",".5","1"))
+  }else{
+    p <- p + scale_x_continuous(breaks=c(0,0.25,.5,.75,1),
+                                labels=c("0",".25",".5",".75","1"))
+  }
+  if(legend.inside)
+    p <- p + theme(legend.position = c(1, 0), legend.justification = c(1, 0)) +
+      guides(colour=guide_legend(keyheight=leg.spacing, default.unit="cm"),
+             shape=guide_legend(keyheight=leg.spacing, default.unit="cm")) +
+    theme(legend.spacing.y = unit(0, 'cm'), legend.box.spacing = unit(0,"pt"), 
+          legend.box.margin=margin(0,0,0,0), legend.title=element_text(size=10))
+  p + labs(y="True Positive Rate (TPR, i.e. recall)", colour="Method",
+       x="False Discovery Rate (FDR)", shape="Nominal\nFDR threshold")
+}
+
+mergeSts <- function(sim, ms){
+  st <- dplyr::bind_rows(list("simulation"=sim, "MS data"=ms), .id="Dataset")
+  st <- st[!grepl("Excitatory",st$celltype),]
+  st$celltype <- factor(paste(st$Dataset, st$celltype, sep="\n"))
+  st
+}
+
 
 getThStats <- function(ssres, truth, th=0.1, scores=NULL){
   m <- dplyr::bind_rows(ssres, .id="seed")
@@ -155,3 +200,5 @@ plotThStats <- function(x){
     scale_y_continuous(breaks=scales::pretty_breaks(2)) +
     scale_fill_viridis_c()
 }
+
+

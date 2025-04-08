@@ -79,6 +79,7 @@ dds <- dds[filterByExpr(dds, mm),]
 dds <- estimateDisp(dds, mm)
 fit <- glmQLFit(dds,mm)
 d <- as.data.frame(topTags(glmQLFTest(fit), Inf))
+d$predFC <- predFC(dds, mm)[row.names(d),2]
 saveRDS(d, "simulated2.bulk.DEA.rds")
 ```
 
@@ -89,6 +90,9 @@ saveRDS(d, "simulated2.bulk.DEA.rds")
 pb <- readRDS("simulated2.PB.rds")
 truth <- readRDS("simulated2.truth.rds")
 bulk <- readRDS("simulated2.bulk.DEA.rds")
+bulk2 <- setNames(rank(-abs(bulk$predFC))*sign(bulk$predFC), row.names(bulk))
+bulk2 <- bulk2/max(abs(bulk2))
+
 bulk <- setNames(bulk$PValue*sign(bulk$logFC), row.names(bulk))
 
 rs <- sapply(assays(pb), rowSums)
@@ -122,6 +126,19 @@ saveRDS(ssres, file="ssres.rds")
 
 ```{r}
 ssres <- readRDS("ssres.rds")
+set.seed(123)
+sslfc <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=FALSE), FUN=function(x){
+  x <- x[,c("celltype", "gene", "PValue", "logFC", "FDR")]
+  .bbhwAll(x, bulk, pb=props, verbose = FALSE)
+})
+m <- dplyr::bind_rows(sslfc, .id="seed")
+m <- merge(m, truth, by=c("celltype","gene"), all.x=TRUE)
+m$isDEG <- !is.na(m$logFC.y)
+scores <- grep("^FDR|^padj\\.", colnames(m), value=TRUE)
+m <- m[order(m$celltype, m$PValue),]
+st <- getStats(m[,intersect(scores,colnames(m))], m$isDEG, celltype=m$celltype, roundNd = NULL, noRankAt1=TRUE)
+save(sslfc, st, file="simulated.lfcRes.RData")
+
 set.seed(123)
 ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=FALSE), FUN=function(x){
   x <- x[,c("celltype", "gene", "PValue", "logFC", "FDR")]

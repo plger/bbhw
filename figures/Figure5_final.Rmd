@@ -14,21 +14,25 @@ suppressPackageStartupMessages({
 source("../functions.R")
 ```
 
+```{r, fig.width=12, fig.height=7}
+load("../scRNAsimulation/simulated.lfcRes.RData")
+st1 <- st
+load("../MSdata/lfc_res.rds")
+stLFC <- mergeSts(st1, st)
+stLFC <- stLFC[stLFC$score=="padj.PAS.LSL.loc",]
+stLFC$score <- "bbhw PA-shrunkLFC (gBH.LSL)"
 
-```{r}
-load("plotDat.RData")
-scores <- c("FDR.local", grep("padj.PAS.LSL.loc",unique(thsS$method), value=TRUE, fixed=TRUE))
-sts2 <- renameScores(sts[sts$score %in% scores,], TRUE, TRUE, TRUE)
-p1 <- plotPR(sts2, facet_scores = FALSE, noLine = TRUE, nrow=1) + 
-  labs(title="Simulated data", x="Recall (i.e. sensitivity)", y="Precision (1-FDR)")
-st2 <- renameScores(st[st$score %in% scores,], TRUE, TRUE, TRUE)
-p2 <- plotPR(st2, facet_scores = FALSE, noLine = TRUE, nrow=1) + 
-  labs(title="Subsampled MS data", x="Recall (i.e. sensitivity)", y="Precision (1-FDR)")
+load("plotDat.RData", verbose=TRUE)
+stSig <- mergeSts(sts, st)
+stSig <- stSig[stSig$score %in% c("padj.PAS.LSL.loc","FDR"),]
+stSig$score <- gsub("padj.+","bbhw PAS (gBH.LSL)", stSig$score)
+stSig$score <- gsub("FDR","standard", stSig$score)
+st <- rbind(stSig, stLFC)
 ```
 
 ```{r, fig.width=10, fig.height=6}
 pdf("Figure5_final.pdf", width=10, height=6)
-(p1 / p2) + plot_layout(guides="collect")
+tprPlot(st)
 dev.off()
 ```
 

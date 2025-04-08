@@ -56,12 +56,9 @@ save(sts, st, ths, thsS, FPsS, file="plotDat.RData")
 ```{r, fig.width=10, fig.height=11}
 load("plotDat.RData")
 scores <- grep("FDR\\.local|loc\\.raw$",unique(thsS$method), value=TRUE)
-sts2 <- renameScores(sts[sts$score %in% scores,], TRUE, TRUE, TRUE)
-p1 <- plotPR(sts2, facet_scores = FALSE, noLine = TRUE, nrow=1) + 
-  labs(title="Simulated data", x="Recall (i.e. sensitivity)", y="Precision (1-FDR)")
-st2 <- renameScores(st[st$score %in% scores,], TRUE, TRUE, TRUE)
-p2 <- plotPR(st2, facet_scores = FALSE, noLine = TRUE, nrow=1) +
-  labs(title="Subsampled MS data", x="Recall (i.e. sensitivity)", y="Precision (1-FDR)")
+st <- mergeSts(sts, st)
+st <- renameScores(st[st$score %in% scores,], TRUE, TRUE, TRUE)
+p1 <- tprPlot(st)
 
 dt <- dplyr::bind_rows(list("Simulated data"=thsS, "MS data"=ths), .id="Dataset")
 dt$celltype <- paste(dt$Dataset, dt$celltype, sep="\n")
@@ -79,7 +76,7 @@ dt$method <- factor(as.character(dt$method), as.character(conv))
 pt2 <- plotThStats(dt)
 
 pdf("Figure3_main.pdf", width=10, height=11)
-plot_grid( (p1/ p2) + plot_layout(guides="collect"),
+plot_grid( p1,
            pt1, pt2, nrow=3, rel_heights = c(5,2.7,3), labels=LETTERS[1:3], scale=0.95)
 dev.off()
 ```
