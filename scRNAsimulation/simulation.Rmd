@@ -17,8 +17,10 @@ suppressPackageStartupMessages({
 source("../functions.R")
 ```
 
+As input for the simulation we used a filtered, downsized version of the data from the muscat paper:
+
 ```{r, eval=FALSE}
-ref <- readRDS("~/bioinfo/robinson/teaching/2024/material/week13-09dec2024/week13.SCE.processed.rds")
+download.file("http://imlspenticton.uzh.ch/teaching/STA426/week13.SCE.rds", dest="muscat.SCE.rds")
 ref <- ref[,ref$group_id=="WT"]
 ref$cluster_id <- ref$cluster2
 ref$group_id <- NULL
