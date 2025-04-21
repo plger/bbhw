@@ -17,10 +17,7 @@ source("../functions.R")
 
 
 ```{r}
-pb <- readRDS("Will_pb_broad_2023-04-13.rds")
-pb <- pb[,which(pb$matter=="WM" & pb$lesion_type %in% c("WM","AL","CAL","CIL"))]
-pb$is_lesion <- pb$lesion_type != "WM"
-assays(pb) <- assays(pb)[1:7]
+pb <- readRDS("pb_broad_filtered.rds")
 
 pbResFull <- readRDS("pbfull_res.rds")
 names(wCt) <- wCt <- names(which(sapply(split(pbResFull$isDEG, pbResFull$celltype), sum, na.rm=TRUE)>2))

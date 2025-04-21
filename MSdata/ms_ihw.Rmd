@@ -56,12 +56,20 @@ doOneDea <- function(pb, assay=1, minPerGroup=10, minCounts=2000, minRelCounts=0
 }
 ```
 
+The data comes from https://zenodo.org/records/8338963 ; here we use a pre-compiled pseudo-bulk object, filtered to the cell types that have a decent DEA signal in the full data.
 
-```{r objPrep, eval=FALSE}
+```{r objGet, eval=FALSE}
 pb <- readRDS("Will_pb_broad_2023-04-13.rds")
 pb <- pb[,which(pb$matter=="WM" & pb$lesion_type %in% c("WM","AL","CAL","CIL"))]
 pb$is_lesion <- pb$lesion_type != "WM"
-assays(pb) <- assays(pb)[1:7]
+assays(pb) <- assays(pb)[1:4]
+saveRDS(pb, "pb_broad_filtered.rds")
+```
+
+For size reason, we share on github the filtered one, so skip to this:
+
+```{r objPrep, eval=FALSE}
+pb <- readRDS("pb_broad_filtered.rds")
 
 ## no proportion adjustment:
 # b <- SummarizedExperiment(list(counts=Reduce("+",assays(pb))), colData=colData(pb))
@@ -105,10 +113,7 @@ saveRDS(res2, "pbfull_res.rds")
 
 
 ```{r}
-pb <- readRDS("Will_pb_broad_2023-04-13.rds")
-pb <- pb[,which(pb$matter=="WM" & pb$lesion_type %in% c("WM","AL","CAL","CIL"))]
-pb$is_lesion <- pb$lesion_type != "WM"
-assays(pb) <- assays(pb)[1:7]
+pb <- readRDS("pb_broad_filtered.rds")
 
 pbResFull <- readRDS("pbfull_res.rds")
 names(wCt) <- wCt <- names(which(sapply(split(pbResFull$isDEG, pbResFull$celltype), sum, na.rm=TRUE)>2))
