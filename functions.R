@@ -134,7 +134,7 @@ tprPlot <- function(st, ths=c(0.05,0.1,0.25), sqrty=TRUE, sqrtx=FALSE,
   p <- ggplot(st, aes(fdr, recall, colour=score, linetype=score)) + 
     facet_wrap(~celltype, nrow=nrow, ...) + theme_bw() +
     theme(panel.grid.minor = element_blank()) +
-    geom_vline(xintercept=c(0.05,0.1,0.25), linetype="dashed", colour="darkgrey") +
+    geom_vline(xintercept=ths, linetype="dashed", colour="darkgrey") +
     ggrastr::geom_point_rast(size=0.03)
   if(!is.null(ths)) p <- p + geom_point(aes(shape=th), data=thsd, size=3)
   if(sqrty) p <- p + scale_y_sqrt(breaks=scales::pretty_breaks(4))
