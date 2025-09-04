@@ -28,13 +28,13 @@ ref <- prepSim(ref)
 saveRDS(ref, "refPrepped4Sim.rds")
 ```
 
-```{r, eval=FALSE}
+```{r}
 ref <- readRDS("refPrepped4Sim.rds")
 probs <- list( cluster=c(0.8,0.2),
                sample=rep(0.25,8),
                group=c(0.5,0.5) )
 set.seed(123)
-sim <- bplapply(list(c(0.2,0), c(0,0.2)), BPPARAM=MulticoreParam(2), FUN=\(x){
+sim <- bplapply(list(c(0.2,0), c(0,0.2)), BPPARAM=MulticoreParam(2, RNGseed=1234), FUN=\(x){
   simData(ref, nc=16000, ns=8, nk=2, probs=probs, p_type=0.2, force=TRUE,
                dd=TRUE, p_dd=c(0.80,0,0.2,0,0,0), paired=TRUE, rel_lfc=x)
 })
@@ -66,7 +66,7 @@ saveRDS(b, file="simulated2.bulk.rds")
 pb <- aggregateData(sim)
 saveRDS(pb, file="simulated2.PB.rds")
 
-sce <- scater::logNormCounts(sce)
+sce <- scater::logNormCounts(sim)
 sce <- scater::runPCA(sce, 10, ntop=3000)
 sce <- scater::runUMAP(sce, dimred="PCA", BNPARAM=BiocNeighbors::AnnoyParam())
 rd <- cbind(as.data.frame(colData(sce)), reducedDim(sce, "UMAP"), reducedDim(sce, "PCA")[,1:2])
@@ -102,7 +102,7 @@ props <- (1L+rs)/(rowSums(1L+rs))
 ```
 
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 set.seed(123)
 ssres <- bplapply(1:12, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=FALSE), FUN=function(s){
   sw <- c(sample(which(pb$group_id=="A"),2),sample(which(pb$group_id=="B"),2))
