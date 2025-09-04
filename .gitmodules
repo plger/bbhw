@@ -1,0 +1,3 @@
+[submodule "01_sim_snakemake"]
+	path = 01_sim_snakemake
+	url = git@github.com:Jiayi-Wang-Joey/bbhw.git
