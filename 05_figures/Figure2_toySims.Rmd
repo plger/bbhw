@@ -18,7 +18,7 @@ register(MulticoreParam(6, progress=TRUE))
 ```
 
 ```{r, fig.width=10, fig.height=4}
-a <- readRDS("../stressData/CRS_neuronal_DEAs.rds")
+a <- readRDS("../00_stressData/CRS_neuronal_DEAs.rds")
 b <- a[a$cluster_id==a$cluster_id[[1]],]
 b$FDR <- p.adjust(b$p_val, method="fdr")
 names(nN) <- nN <- c(2,5,10,20,50,100,200)
@@ -52,7 +52,7 @@ p1 <- ggplot(test2, aes(-log10(value), -log10(full), color=nsplits, group=nsplit
 ```
 
 ```{r, fig.width=10, fig.height=2.5}
-load("../toySims/GBH_sim_res.RData")
+load("../01_toySim/GBH_sim_res.RData")
 set.seed(1)
 pDists <- data.frame(type=rep(factor(c("With signal","Null simulation")), each=80000),
                      p=c(abs(c(runif(74000), rnorm(1000,sd=0.001), rnorm(3000,sd=0.01),rnorm(2000,sd=0.025))),runif(80000)))
@@ -63,21 +63,24 @@ p2 <- ggplot(pDists, aes(p)) + geom_histogram(breaks=(0:20)/20, alpha=0.8, fill=
   labs(x="p-values (n=80000)", y="Count") + 
   theme(legend.position = "none", strip.background = element_blank(), strip.text=element_text(size=11))
 
-
 simI2 <- aggregate(simI[,3:4], by=list(method=simI$method), FUN=mean)
 upper <- aggregate(simI[,3:4], by=list(method=simI$method), FUN=max)[,-1]
 lower <- aggregate(simI[,3:4], by=list(method=simI$method), FUN=min)[,-1]
 colnames(upper) <- paste0(colnames(upper), ".upper")
 colnames(lower) <- paste0(colnames(lower), ".lower")
 d <- cbind(simI2, upper, lower)
+
+cols <- setNames(RColorBrewer::brewer.pal(length(unique(d$method)), "Dark2"), unique(d$method))
+
 p3 <- ggplot(d, aes(recall, 1-FDR, colour=method)) + geom_hline(yintercept=0.95, linetype="dashed") +
   geom_point() + geom_segment(aes(x=recall.lower, xend=recall.upper, y=1-FDR, colour=method)) +
   geom_segment(aes(x=recall, y=(1-FDR.lower), yend=(1-FDR.upper), xend=recall)) +
   coord_cartesian(ylim=c(0.85,1)) + theme_bw() + theme(legend.position = "none") +
+  scale_color_manual(values=cols) +
   labs(y="Precision (1-FDR)", x="Recall (Sensitivity)",
        title="Simulation with signal", subtitle = "Informative bins")
 
-p4 <- ggplot(simNull, aes(as.factor(nsplits), FP, fill=method)) + geom_boxplot() + theme_bw() +
+p4 <- ggplot(simNull, aes(as.factor(nsplits), FP, fill=method)) + geom_boxplot() + theme_bw() + scale_fill_manual(values=cols) +
   labs(title="Null simulation (no signal)", subtitle="Random bins", x="Number of random bins", y="Number of false positives")
 
 row2 <- plot_grid(p2, p3, p4, nrow=1, scale=0.95, labels=LETTERS[2:4], rel_widths=c(3,5,6))

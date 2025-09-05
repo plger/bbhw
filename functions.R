@@ -116,13 +116,18 @@ plotPR <- function(st, ths=c(0.05,0.1,0.25), facet_scores=TRUE, sqrty=FALSE, noL
 }
 
 
-tprPlot <- function(st, ths=c(0.05,0.1,0.25), sqrty=TRUE, sqrtx=FALSE, 
+tprPlot <- function(st, ths=c(0.05,0.1,0.25), sqrty=TRUE, sqrtx=FALSE, mergeSeeds=TRUE,
                     legend.inside=TRUE, nrow=2, leg.spacing=0.35, ...){
   st <- st[!grepl("Excitatory",st$celltype),]
   if(!is.null(st$Dataset))
     st$celltype <- factor(st$celltype, unique(st$celltype[order(st$Dataset)]))
+  if(is.null(st$seed) || mergeSeeds){
+    st$group <- st$score
+  }else{
+    st$group <- paste(st$score, st$seed)
+  }
   if(!is.null(ths)){
-    thsd <- dplyr::bind_rows(lapply(split(st, st[,c("celltype","score")]), FUN=function(x){
+    thsd <- dplyr::bind_rows(lapply(split(st, st[,c("celltype","group")]), FUN=function(x){
       x[unlist(lapply(ths, FUN=\(th){
         w <- which(x$nominal<=th)
         if(length(w)==0) return(c())
@@ -131,7 +136,7 @@ tprPlot <- function(st, ths=c(0.05,0.1,0.25), sqrty=TRUE, sqrtx=FALSE,
     }))
     thsd$th <- factor(sapply(thsd$nominal, FUN=function(x) ths[which.min(abs(x-ths))]))
   }
-  p <- ggplot(st, aes(fdr, recall, colour=score, linetype=score)) + 
+  p <- ggplot(st, aes(fdr, recall, colour=score, linetype=score, group=group)) + 
     facet_wrap(~celltype, nrow=nrow, ...) + theme_bw() +
     theme(panel.grid.minor = element_blank()) +
     geom_vline(xintercept=ths, linetype="dashed", colour="darkgrey") +
@@ -161,39 +166,10 @@ mergeSts <- function(sim, ms){
   st
 }
 
-
-getThStats <- function(ssres, truth, th=0.1, scores=NULL){
-  m <- dplyr::bind_rows(ssres, .id="seed")
-  if(is.null(scores))
-    scores <- grep("^FDR|^padj\\.", colnames(m), value=TRUE)
-  if(is.null(truth$celltype)) truth$celltype <- truth$cluster_id
-  if(is.null(truth$isDEG)) truth$isDEG <- !is.na(truth$logFC)
-  m <- merge(m, truth[,c("celltype","gene","isDEG")], by=c("celltype","gene"), all.x=TRUE)
-  m <- m[which(!is.na(m$isDEG)),]
-  m <- m[order(m$celltype, m$PValue),]
-  scores <- intersect(scores, colnames(ssres[[1]]))
-  ss <- dplyr::bind_rows(lapply(setNames(scores,scores), FUN=function(x){
-    dplyr::bind_rows(lapply(split(m, m$celltype), \(m){
-      m2 <- m[which(m[[x]]<th),]
-      ret <- data.frame(TP=sum(m2$isDEG), FP=sum(!m2$isDEG))
-      ret$precision=as.numeric(ret[1]/sum(ret))
-      ret$recall=as.numeric(ret[1]/sum(m$isDEG))
-      ret$calledSig <- (ret$TP + ret$FP)/length(ssres)
-      ret$F1 <- 2/(1/ret$precision+1/ret$recall)
-      ret
-    }), .id="celltype")
-  }), .id="method")
-  ss <- reshape2::melt(ss, id.vars=c("method", "celltype", "TP", "FP","calledSig","F1"),
-                       measure.vars=c("precision", "recall", "F1"))
-  ss2 <- ss[ss$variable=="F1",c("method","value")]
-  ss2 <- aggregate(ss2[,2], ss2[,1,drop=FALSE], FUN=mean)
-  ss2$x[is.na(ss2$x)] <- 0
-  ss$method <- factor(ss$method, ss2$method[order(ss2$x)])
-  ss
-}
-
 plotThStats <- function(x){
-  x <- x[x$variable %in% c("precision","recall"),]
+  x2 <- x[x$variable=="F1" & !grepl("Unaffected",x$celltype),]
+  x2$F1 <- x2$value
+  x <- merge(x[x$variable %in% c("precision","recall"),], x2[,c("method","celltype","threshold","F1")])
   ggplot(x, aes(method, value, fill=F1)) + geom_col() + 
     facet_grid(variable~celltype, scales="free_y") + theme_bw() +
     theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5), axis.title.x=element_blank()) + 
@@ -201,4 +177,83 @@ plotThStats <- function(x){
     scale_fill_viridis_c()
 }
 
+plotThStats2 <- function(x, type=c("mean","median")){
+  type <- match.arg(type)
+  x <- as.data.frame(x[!grepl("Unaffected",x$celltype),])
+  x <- x[grep(type, x$variable),]
+  x$variable <- gsub(paste0(type,"."), "", x$variable, fixed=TRUE)
+  x$variable <- factor(x$variable, c("precision","recall", "F1"))
+  ggplot(x, aes(method, value, fill=method)) + geom_col() + 
+    geom_segment(aes(y=value-var, yend=value+var)) + 
+    facet_grid(variable~celltype, scales = "free_y") +
+    theme_bw() + scale_y_continuous(breaks=scales::pretty_breaks(2)) +
+    theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5),
+          axis.title.x=element_blank(), legend.position = "none")
+}
 
+
+computeMetrics <- function(ssres, truth=NULL, th=0.1, scores=NULL, relative=FALSE) {
+  library(data.table)
+  stopifnot(!is.null(ssres[[1]]$isDEG) || !is.null(truth))
+  .fun <- \(m, truth, th, scores=NULL, relative=FALSE) {
+    if(is.null(scores))
+      scores <- grep("^FDR|^padj\\.", colnames(m), value=TRUE)
+    if(is.null(m$isDEG)){
+      m <- merge(m, truth[,c("celltype","gene","isDEG")], 
+                 by=c("celltype","gene"))
+    }
+    
+    m <- m[which(!is.na(m$isDEG)),]
+    m <- m[order(m$celltype, m$PValue),]
+    ss <- dplyr::bind_rows(lapply(setNames(scores,scores), FUN=function(x){
+      dplyr::bind_rows(lapply(split(m, m$celltype), \(m){
+        m2 <- m[which(m[[x]]<th),]
+        ret <- data.frame(TP=sum(m2$isDEG), FP=sum(!m2$isDEG))
+        ret$precision=as.numeric(ret[1]/sum(ret)) 
+        ret$recall=as.numeric(ret[1]/sum(m$isDEG))
+        ret$F1 <- 2/(1/ret$precision+1/ret$recall)
+        ret
+      }), .id="celltype")
+    }), .id="method")
+    if(!relative) return(ss)
+    baseline <- ss[which(ss$method=="FDR.local"),]
+    ff <- c("precision","recall","F1")
+    row.names(baseline) <- baseline$celltype
+    ss[,ff] <- ss[,ff]-baseline[as.character(ss$celltype), ff]
+    ss
+  }
+  ss <- lapply(ssres, \(x) .fun(x, truth, th, scores=scores, relative=relative))
+  dt <- rbindlist(ss, idcol = "seed")
+  dt[is.na(F1), F1 := 0]
+  td <- dt[, .(
+    mean.precision = mean(precision, na.rm=TRUE),
+    sem.precision = sd(precision, na.rm=TRUE)/sqrt(length(precision)),
+    median.precision = median(precision, na.rm=TRUE),
+    mad.precision = median(abs(precision-median(precision, na.rm=TRUE))),
+    mean.recall = mean(recall),
+    sem.recall = sd(recall)/sqrt(length(recall)),
+    median.recall = median(recall),
+    mad.recall = median(abs(recall-median(recall, na.rm=TRUE))),
+    mean.F1 = mean(F1),
+    sem.F1 = sd(F1)/sqrt(length(F1)),
+    median.F1 = median(F1),
+    mad.F1 = median(abs(F1-median(F1, na.rm=TRUE))),
+    TP    = as.numeric(median(TP)),
+    mean.FP    = as.numeric(mean(FP))
+  ), by = .(method, celltype)]
+  
+  td1 <- melt(
+    td,
+    measure.vars = paste(rep(c("mean","median"), each=3), c("precision", "recall", "F1"), sep="."),  
+    id.vars = c("method", "celltype")
+  )
+  td2 <- melt(
+    td,
+    measure.vars = paste(rep(c("sem","mad"), each=3), c("precision", "recall", "F1"), sep="."),  
+    id.vars = c("method", "celltype"),
+    value.name = "var"
+  )
+  td1$var <- td2$var
+  td1 <- td1[!grepl("Unaffected", td1$celltype),]
+  data.table(td1, threshold=th)
+}

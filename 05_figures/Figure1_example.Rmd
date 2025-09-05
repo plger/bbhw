@@ -15,12 +15,12 @@ suppressPackageStartupMessages({
 ```
 
 ```{r, fig.width=8, fig.height=3}
-a <- readRDS("../stressData/CRS_neuronal_DEAs.rds")
-ba <- readRDS(file="../stressData/CRS_bulkPvals.rds")
+a <- readRDS("../00_stressData/CRS_neuronal_DEAs.rds")
+ba <- readRDS(file="../00_stressData/CRS_bulkPvals.rds")
 q <- quantile(ba, (0:4)/4, na.rm=TRUE)
 sq <- data.frame(xmin=q[1:4], xmax=q[-1], ymin=rep(c(0,3450),each=4), ymax=3950,
                  bin=1:4, isTop=rep(c(FALSE,TRUE),each=4), lab=1:4)
-cols <- setNames(c(RColorBrewer::brewer.pal(4, "Spectral"),"darkgrey"), 1:5)
+cols <- setNames(c(RColorBrewer::brewer.pal(4, "Dark2"),"darkgrey"), 1:5)
 p1 <- ggplot(data.frame(p=ba)) + 
   geom_rect(data=sq, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, fill=factor(bin), alpha=isTop)) +
   geom_text(data=sq[1:4,], aes(x=(xmin+xmax)/2, y=3700, label=lab)) + 

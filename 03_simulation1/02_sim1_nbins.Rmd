@@ -1,7 +1,6 @@
 ---
-title: "IHW"
+title: "Simulation 2 nbins"
 author: "Pierre-Luc"
-date: "2025-01-10"
 output: html_document
 ---
 
@@ -10,33 +9,33 @@ suppressPackageStartupMessages({
   library(BiocParallel)
   library(ggplot2)
   library(muscat)
+  library(edgeR)
   library(SummarizedExperiment)
 })
 source("../functions.R")
 ```
 
+# 2 vs 2
 
 ```{r}
-pb <- readRDS("pb_broad_filtered.rds")
-
-pbResFull <- readRDS("pbfull_res.rds")
-names(wCt) <- wCt <- names(which(sapply(split(pbResFull$isDEG, pbResFull$celltype), sum, na.rm=TRUE)>2))
-
-bulk <- readRDS("Will_bulk.rds")
-bulk <- as.data.frame(rowData(bulk))
+pb <- readRDS("simulated1.PB.rds")
+truth <- readRDS("simulated1.truth.rds")
+bulk <- readRDS("simulated1.bulk.DEA.rds")
+bulk <- setNames(bulk$PValue*sign(bulk$logFC), row.names(bulk))
 
 rs <- sapply(assays(pb), rowSums)
 props <- (1L+rs)/(rowSums(1L+rs))
 ```
 
 ```{r}
-load("Will_res.RData")
+ssres <- readRDS("ssres.rds")
 set.seed(123)
 names(nBins) <- nBins <- c(5,8,12,16,20,30,50,100)
-ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), FUN=function(x){
-  x <- x[,c("celltype", "gene", "cluster_id", "PValue", "logFC", "FDR")]
+ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE),
+                FUN=function(x){
+  x <- x[,c("celltype", "gene", "PValue", "logFC", "FDR")]
   x$FDR.global <- p.adjust(x$PValue, method="fdr")
-  x <- dplyr::bind_rows(lapply(split(x, x$cluster_id), \(x){
+  x <- dplyr::bind_rows(lapply(split(x, x$celltype), \(x){
     x$FDR.local <- p.adjust(x$PValue, method="fdr")
     x
   }))
@@ -58,14 +57,20 @@ ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE),
   }
   x
 })
-truth <- pbResFull[!grepl("Excitatory", pbResFull$celltype),]
-m <- dplyr::bind_rows(ssres, .id="seed")
-m <- merge(m, truth[,c("celltype","gene","isDEG")], by=c("celltype","gene"))
-m <- m[!is.na(m$isDEG),]
-scores <- setdiff(grep("^padj\\.", colnames(m), value=TRUE), "FDR")
-m <- m[order(m$celltype, m$PValue),]
 
-ths <- getThStats(ssres, truth)
-save(ths, ssres, file="MS.nbins.RData")
-plotThStats(ths)
+ssres <- lapply(ssres, \(m){
+  m <- merge(m, truth, by=c("celltype","gene"), all.x=TRUE)
+  m$isDEG <- !is.na(m$logFC.y)
+  m[order(m$celltype, m$PValue),]
+})
+
+ths <- computeMetrics(ssres)
+save(ths, ssres, file="sim.nbins.RData")
+plotThStats2(ths)
 ```
+
+
+```{r}
+sessionInfo()
+```
+
