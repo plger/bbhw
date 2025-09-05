@@ -18,7 +18,7 @@ suppressPackageStartupMessages({
 
 ## UMAP of simulated dataset 2
 ```{r}
-sce <- readRDS("../04_simulation2/data/sim/00-raw/muscat_LPS.rds")
+sce <- readRDS("../04_simulation2/data/sim/00-raw/muscat_PBMC.rds")
 df <- data.frame(reducedDim(sce, "UMAP"), colData(sce))
 
 aes <- list(
