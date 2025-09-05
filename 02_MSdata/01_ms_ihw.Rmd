@@ -85,6 +85,7 @@ b <- lapply(setNames(assayNames(pb), assayNames(pb)), \(a){
 })
 b <- SummarizedExperiment(list(counts=Reduce("+",b)), colData=colData(pb))
 
+## Run DEA on the bulk:
 set.seed(123)
 b <- SEtools::svacor(b, ~sex+is_lesion, ~sex, numSVmethod="leek")
 dds <- calcNormFactors(DGEList(assay(b)))
@@ -100,7 +101,7 @@ rowData(b)$logFC <- res$logFC
 rowData(b)$predFC <- predFC(dds, mm)[row.names(b),"is_lesionTRUE"]
 saveRDS(b, file="Will_bulk.rds")
 
-
+## Run DEA on the full-sized pseudobulk data:
 pbRes <- bplapply(setNames(assayNames(pb),assayNames(pb)),
                   BPPARAM=MulticoreParam(6, progress=TRUE), FUN=\(x){
   tryCatch(doOneDea(pb, x), error=\(e){ warning(e); NULL })
@@ -113,18 +114,24 @@ saveRDS(res2, "pbfull_res.rds")
 
 
 ```{r}
+# full pseudobulk data:
 pb <- readRDS("pb_broad_filtered.rds")
 
+# DEA rsults on the full pseudobulk data:
 pbResFull <- readRDS("pbfull_res.rds")
+# cell types with >2 DEGs:
 names(wCt) <- wCt <- names(which(sapply(split(pbResFull$isDEG, pbResFull$celltype), sum, na.rm=TRUE)>2))
 
+# bulk DEA:
 bulk <- readRDS("Will_bulk.rds")
 bulk <- as.data.frame(rowData(bulk))
 
+# gene proportions per celltype:
 rs <- sapply(assays(pb), rowSums)
 props <- (1L+rs)/(rowSums(1L+rs))
 ```
 
+Run DEA on subsamples of 5 vs 4:
 
 ```{r, eval=FALSE}
 set.seed(123)
@@ -138,6 +145,7 @@ ssres <- bplapply(1:12, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), 
 saveRDS(ssres, file="Will_res.RData")
 ```
 
+Run the bbhw variants:
 
 ```{r}
 load("Will_res.RData")
@@ -157,6 +165,7 @@ m <- m[order(m$celltype, m$PValue),]
 st <- getStats(m[,intersect(scores,colnames(m))], m$isDEG, celltype=m$celltype, roundNd = NULL, noRankAt1=TRUE)
 save(sslfc, st, file="lfc_res.rds")
 
+## Add the local & global FDR without prior
 set.seed(123)
 ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), FUN=function(x){
   x <- x[,c("celltype", "gene", "cluster_id", "PValue", "logFC", "FDR")]
@@ -168,7 +177,7 @@ ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE),
   .bbhwAll(x, bulk, pb=props)
 })
 
-
+# compute stats:
 m <- dplyr::bind_rows(ssres, .id="seed")
 m <- merge(m, pbResFull[,c("celltype","gene","isDEG")],
            by=c("celltype","gene"))
@@ -186,16 +195,4 @@ aucs <- dplyr::bind_rows(lapply(split(st, paste(st$celltype, st$score)), \(x){
 save(ssres, st, aucs, file="MS.res.RData")
 ```
 
-
-```{r}
-load("lfc_res.rds")
-st2 <- st[st$score=="padj.sig.LSL.loc",]
-st2$score <- "Predicted logFC"
-load("MS.res.RData")
-st1 <- st[st$score=="padj.sig.LSL.loc",]
-st1$score <- "significance"
-m <- rbind(st1, st2)
-plotPR(m, facet_scores = FALSE, noLine = TRUE, nrow=1) + 
-    labs(title="Simulated data", x="Recall (i.e. sensitivity)", y="Precision (1-FDR)")
-```
 
