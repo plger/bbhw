@@ -68,7 +68,7 @@ saveRDS(pb, "pb_broad_filtered.rds")
 
 For size reason, we share on github the filtered one, so skip to this:
 
-```{r objPrep, eval=FALSE}
+```{r objPrep, eval=TRUE}
 pb <- readRDS("pb_broad_filtered.rds")
 
 ## no proportion adjustment:
@@ -133,7 +133,7 @@ props <- (1L+rs)/(rowSums(1L+rs))
 
 Run DEA on subsamples of 5 vs 4:
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 set.seed(123)
 ssres <- bplapply(1:12, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), FUN=function(s){
   sw <- c(sample(which(pb$is_lesion),5),sample(which(!pb$is_lesion),4))

@@ -19,7 +19,7 @@ source("../functions.R")
 
 As input for the simulation we used a filtered, downsized version of the data from the muscat paper:
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 ref <- readRDS("../04_simulation2/data/ref/week13.SCE.processed.rds")
 # prepare data for simulation:
 ref <- ref[,ref$group_id=="WT"]

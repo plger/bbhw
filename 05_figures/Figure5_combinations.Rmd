@@ -118,7 +118,7 @@ pb <- ggplot(ths, aes(method2, value, fill=nBins, group=method)) +
 
 
 ```{r, fig.width=10, fig.height=12}
-pdf("Figure4_combinations.pdf", width=10, height=12)
+pdf("Figure5_combinations.pdf", width=10, height=12)
 plot_grid( grid.grabExpr(draw(Reduce("+", c(list(h0),hl)), merge=TRUE)), 
            pb,
            nrow=2, rel_heights=c(3,2), scale=0.95, labels="AUTO")

@@ -87,8 +87,8 @@ row2 <- plot_grid(p2, p3, p4, nrow=1, scale=0.95, labels=LETTERS[2:4], rel_width
 ```
 
 
-```{r, eval=FALSE, fig.width=10, fig.height=7}
-pdf("Figure2.pdf", width=10, height=7)
+```{r, eval=TRUE, fig.width=10, fig.height=7}
+pdf("Figure3.pdf", width=10, height=7)
 plot_grid(p1, row2, nrow=2, rel_heights = c(4, 2.5), labels=c("A",NA), scale=c(0.95,1))
 dev.off()
 ```
