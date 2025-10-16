@@ -153,7 +153,7 @@ set.seed(123)
 bulk2 <- setNames(rank(-abs(bulk$predFC))*sign(bulk$predFC), row.names(bulk))
 bulk2 <- bulk2/max(abs(bulk2))
 sslfc <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), FUN=function(x){
-  x <- x[,c("celltype", "gene", "cluster_id", "PValue", "logFC", "FDR")]
+  x <- x[,intersect(c("celltype", "gene", "cluster_id", "PValue", "logFC", "FDR"), colnames(x))]
   .bbhwAll(x, bulk2, pb=props)
 })
 m <- dplyr::bind_rows(sslfc, .id="seed")
@@ -168,7 +168,7 @@ save(sslfc, st, file="lfc_res.rds")
 ## Add the local & global FDR without prior
 set.seed(123)
 ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), FUN=function(x){
-  x <- x[,c("celltype", "gene", "cluster_id", "PValue", "logFC", "FDR")]
+  x <- x[,intersect(c("celltype", "gene", "cluster_id", "PValue", "logFC", "FDR"), colnames(x))]
   x$FDR.global <- p.adjust(x$PValue, method="fdr")
   x <- dplyr::bind_rows(lapply(split(x, x$cluster_id), \(x){
     x$FDR.local <- p.adjust(x$PValue, method="fdr")
