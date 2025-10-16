@@ -26,7 +26,7 @@ load("plotDat.RData", verbose=TRUE)
 stSig <- mergeSts(sts, st)
 stSig <- stSig[stSig$score %in% c("padj.PAS.LSL.loc","FDR"),]
 stSig$score <- gsub("padj.+","bbhw PAS (gBH.LSL)", stSig$score)
-stSig$score <- gsub("FDR","standard", stSig$score)
+stSig$score <- gsub("FDR","standard (no prior)", stSig$score)
 st <- rbind(stSig, stLFC)
 
 tpr <- tprPlot(st) + scale_color_manual(values=setNames(RColorBrewer::brewer.pal(3, "Dark2"),unique(st$score)))
