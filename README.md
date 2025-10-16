@@ -2,6 +2,8 @@
 
 This is a repository accompanying this [note](https://www.biorxiv.org/content/10.1101/2025.04.15.648932v1), with the code and data to reproduce the analyses.
 
+If you're rather looking for information on how to _use_ BBHW, refer to the [vignette on bioconductor](https://www.bioconductor.org/packages/devel/bioc/vignettes/muscat/inst/doc/bbhw.html).
+
 ## Installing the modified version of muscat
 
 The bbhw-related functions are now in the devel bioconductor version of muscat (and will soon be in the release version). You may also install the latest from github:
