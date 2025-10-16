@@ -106,6 +106,7 @@ ths <- ths[order(ths$method2, ths$nBins),]
 ths$method <- factor(as.character(ths$method), unique(ths$method))
 ths <- ths[grep("mean",ths$variable),]
 ths$variable <- factor(gsub("mean\\.","",ths$variable), c("precision","recall","F1"))
+ths$method2 <- gsub("FDR\\.local", "No prior", ths$method2)
 
 pb <- ggplot(ths, aes(method2, value, fill=nBins, group=method)) + 
   geom_col(position = "dodge") + 
