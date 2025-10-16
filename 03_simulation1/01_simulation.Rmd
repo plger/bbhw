@@ -17,9 +17,10 @@ suppressPackageStartupMessages({
 source("../functions.R")
 ```
 
-As input for the simulation we used a filtered, downsized version of the data from the muscat paper:
+As reference for the simulation we used a filtered, downsized version of the data from the muscat paper.
+For space reasons, we here provide the prepared muscat reference data, i.e. the product of:
 
-```{r, eval=TRUE}
+```{r, eval=FALSE}
 ref <- readRDS("../04_simulation2/data/ref/week13.SCE.processed.rds")
 # prepare data for simulation:
 ref <- ref[,ref$group_id=="WT"]

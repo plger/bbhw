@@ -170,7 +170,7 @@ set.seed(123)
 ssres <- bplapply(ssres, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), FUN=function(x){
   x <- x[,intersect(c("celltype", "gene", "cluster_id", "PValue", "logFC", "FDR"), colnames(x))]
   x$FDR.global <- p.adjust(x$PValue, method="fdr")
-  x <- dplyr::bind_rows(lapply(split(x, x$cluster_id), \(x){
+  x <- dplyr::bind_rows(lapply(split(x, x$celltype), \(x){
     x$FDR.local <- p.adjust(x$PValue, method="fdr")
     x
   }))
