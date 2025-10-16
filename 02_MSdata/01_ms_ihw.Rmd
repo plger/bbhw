@@ -99,7 +99,7 @@ rowData(b)$PValue <- res$PValue
 rowData(b)$FDR <- res$FDR
 rowData(b)$logFC <- res$logFC
 rowData(b)$predFC <- predFC(dds, mm)[row.names(b),"is_lesionTRUE"]
-saveRDS(b, file="Will_bulk.rds")
+saveRDS(b, file="ms_bulk.rds")
 
 ## Run DEA on the full-sized pseudobulk data:
 pbRes <- bplapply(setNames(assayNames(pb),assayNames(pb)),
@@ -123,7 +123,7 @@ pbResFull <- readRDS("pbfull_res.rds")
 names(wCt) <- wCt <- names(which(sapply(split(pbResFull$isDEG, pbResFull$celltype), sum, na.rm=TRUE)>2))
 
 # bulk DEA:
-bulk <- readRDS("Will_bulk.rds")
+bulk <- readRDS("ms_bulk.rds")
 bulk <- as.data.frame(rowData(bulk))
 
 # gene proportions per celltype:
@@ -142,13 +142,13 @@ ssres <- bplapply(1:12, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=TRUE), 
   })
   dplyr::bind_rows(d[!sapply(d, is.null)], .id="celltype")
 })
-saveRDS(ssres, file="Will_res.RData")
+saveRDS(ssres, file="ms_res.rds")
 ```
 
 Run the bbhw variants:
 
 ```{r}
-load("Will_res.RData")
+ssres <- readRDS("ms_res.rds")
 set.seed(123)
 bulk2 <- setNames(rank(-abs(bulk$predFC))*sign(bulk$predFC), row.names(bulk))
 bulk2 <- bulk2/max(abs(bulk2))
