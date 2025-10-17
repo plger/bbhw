@@ -16,41 +16,6 @@ suppressPackageStartupMessages({
 })
 ```
 
-## UMAP of simulated dataset 2
-```{r}
-sce <- readRDS("../04_simulation2/data/sim/00-raw/muscat_PBMC.rds")
-df <- data.frame(reducedDim(sce, "UMAP"), colData(sce))
-
-aes <- list(
-    geom_point_rast(aes(UMAP1, UMAP2), 
-                    shape=16, alpha=0.1, size=0.5),
-    guides(col=guide_legend(
-        ncol=4, title.position="top",
-        override.aes=list(alpha=1, size=2))),
-    theme_minimal(6), theme(
-        aspect.ratio=1,
-        plot.margin=margin(),
-        axis.text=element_blank(),
-        panel.grid=element_blank(),
-        axis.title=element_text(hjust=0),
-        panel.border=element_rect(fill=NA),
-        legend.key.size=unit(0.25, "lines")))
-
-
-nk <- length(unique(df$cluster_id))
-gg <-  ggplot(df, aes(col=group_id)) +
-    scale_color_manual(values=c("royalblue", "tomato")) +
-    ggplot(df, aes(col=cluster_id)) +
-    scale_color_manual(values=colorRampPalette(brewer.pal(12, "Dark2"))(nk)) +
-    plot_layout(nrow=1, guides="collect") & 
-    aes & theme(
-        plot.margin=margin(0),
-        legend.justification=c(0.5, 1),
-        legend.box.spacing=unit(0, "pt"),
-        )
-```
-
-
 ## Heatmap
 ```{r}
 fs <- list.files("../04_simulation2/outs/sim/sta/", "^metrics*", full.names = TRUE)
