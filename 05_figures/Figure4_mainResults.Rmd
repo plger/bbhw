@@ -70,6 +70,7 @@ load("plotDat.RData")
 scores <- grep("FDR\\.local|loc\\.raw$",unique(thsS$method), value=TRUE)
 st <- mergeSts(sts, st)
 st <- renameScores(st[st$score %in% scores,], TRUE, TRUE, TRUE)
+levels(st$score) <- gsub("^FDR$", "Standard (no prior)", levels(st$score))
 p1 <- tprPlot(st)
 
 dt <- dplyr::bind_rows(list("Simulated data"=thsS, "MS data"=ths), .id="Dataset")
@@ -88,11 +89,8 @@ dt$method <- factor(as.character(dt$method), as.character(conv))
 pt2 <- plotThStats2(dt)
 
 pdf("Figure4_main.pdf", width=10, height=13)
-plot_grid( p1,
-           pt1, pt2, nrow=3, rel_heights = c(4.6,3,3.5), labels=LETTERS[1:3], scale=0.95)
+plot_grid( p1, pt1, pt2,
+           nrow=3, rel_heights = c(4.6,3,3.5), labels=LETTERS[1:3], scale=0.95)
 dev.off()
 ```
 
-
-```{r, fig.width=10, fig.height=11}
-```

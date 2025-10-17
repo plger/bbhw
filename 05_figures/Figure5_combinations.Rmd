@@ -22,11 +22,11 @@ d <- dplyr::bind_rows(list("Simulated data"=thsS, "Subsampled MS data"=ths), .id
 d <- d[!grepl("Unaffected", d$celltype),]
 d <- d[!grepl("raw|^FDR$", d$method),]
 d$method <- factor(d$method)
-levels(d$method) <- renameScores(gsub("padj\\.", "", levels(d$method)))
+levels(d$method) <- renameScores(gsub("padj\\.", "", levels(d$method)), addNp=TRUE)
 
 fps <- reshape2::dcast(FPsS, method~celltype, value.var = "FPs", fun.aggregate = mean, na.rm=TRUE)
 fps <- fps[!grepl("raw|^FDR$",fps[,1]),]
-row.names(fps) <- renameScores(fps[,1])
+row.names(fps) <- renameScores(fps[,1], addNp=TRUE)
 fps <- as.matrix(fps[,-1])
 fps <- fps[row.names(fps) %in% levels(d$method),]
 
@@ -41,7 +41,7 @@ d <- d[grep("mean", d$variable),]
 aucs$variable <- "AUPRC"
 aucs$value <- aucs$AUC
 aucs <- aucs[!grepl("raw", aucs$method),]
-aucs$method <- renameScores(gsub("padj\\.", "", aucs$method))
+aucs$method <- renameScores(gsub("padj\\.", "", aucs$method), addNp=TRUE)
 i <- intersect(colnames(aucs), colnames(d))
 d2 <- rbind(as.data.frame(d)[,i],aucs[!grepl("Excitatory", aucs$celltype) & aucs$method %in% d$method,i])
 ds <- d[,c("celltype","Dataset")]
@@ -63,7 +63,7 @@ m <- do.call(cbind, lapply(ml, \(x){
   x
 }))
 mo <- row.names(m)[order(rowMeans(m, na.rm=TRUE) + matrixStats::rowMedians(m, na.rm=TRUE))]
-wPrior <- ifelse(grepl("^FDR\\.glb$|^FDR\\.loc$",mo), "no prior", "using bulk prior")
+wPrior <- ifelse(grepl("no prior",mo), "no prior", "using bulk prior")
 
 cols <- setNames(list(viridis::magma(99), viridis::inferno(99), viridis::viridis(99), viridis::cividis(99)),
                  names(ml))
@@ -106,7 +106,7 @@ ths <- ths[order(ths$method2, ths$nBins),]
 ths$method <- factor(as.character(ths$method), unique(ths$method))
 ths <- ths[grep("mean",ths$variable),]
 ths$variable <- factor(gsub("mean\\.","",ths$variable), c("precision","recall","F1"))
-ths$method2 <- gsub("FDR\\.local", "No prior", ths$method2)
+ths$method2 <- relevel(as.factor(gsub("FDR\\.local", "No prior", ths$method2)), "No prior")
 
 pb <- ggplot(ths, aes(method2, value, fill=nBins, group=method)) + 
   geom_col(position = "dodge") + 
