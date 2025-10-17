@@ -8,4 +8,8 @@ Rscript -e 'rmarkdown::render("05_figures/Figure3_toySims.Rmd")'
 Rscript -e 'rmarkdown::render("05_figures/Figure4_mainResults.Rmd")'
 Rscript -e 'rmarkdown::render("05_figures/Figure5_combinations.Rmd")'
 Rscript -e 'rmarkdown::render("05_figures/Figure6_logFC.Rmd")'
-Rscript -e 'rmarkdown::render("05_figures/Figure7_sampleSize.Rmd")'
+# for the last figure (added sims in revision), first pull the child repository in 04,
+# then run the snakemake:
+# snakemake 04_simulation2/Snakefile
+# then
+# Rscript -e 'rmarkdown::render("05_figures/Figure7_sampleSize.Rmd")'
