@@ -24,8 +24,8 @@ We also provide a docker image (`plger/bbhw` on dockerhub) to run the scripts:
 
 ```
 # navigate to the directory you want to work at
-# clone the repository:
-git clone https://github.com/plger/bbhw.git
+# clone the repository (and submodule):
+git clone --recursive https://github.com/plger/bbhw.git
 # launch the docker image, mount the pwd, and run all scripts:
 docker run -v $PWD:/home/build/package plger/bbhw bash run_all.sh
 ```
