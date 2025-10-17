@@ -1,3 +1,4 @@
+# renames the methods in `st`
 renameScores <- function(st, rmLoc=FALSE, rmRaw=TRUE, rmSig=FALSE, addNp=FALSE){
   if(is.data.frame(st)){
     if(!is.null(st$score))
@@ -20,7 +21,7 @@ renameScores <- function(st, rmLoc=FALSE, rmRaw=TRUE, rmSig=FALSE, addNp=FALSE){
   score
 }
 
-  
+# just a wrapper to run all bbhw variants.
 .bbhwAll <- function(pbDEA, bulkDEA, pb, verbose=FALSE){
   g <- expand.grid(bin.method=c("PAS","combined","asNA","sig"),
                    correction.method=c("gBH.LSL","binwise","IHW","gBH.TST"),
@@ -64,7 +65,22 @@ renameScores <- function(st, rmLoc=FALSE, rmRaw=TRUE, rmSig=FALSE, addNp=FALSE){
 }
 
 
+#' getStats
+#' 
+#' Computes precision and recall at each position
+#'
+#' @param sl A data.frame with hypotheses as rows and methods as columns
+#' @param truth A vector of true labels (DE or not). Should not contain missing values.
+#' @param celltype A vector of cell type labels for the hypotheses
+#' @param roundNd Logical; whether to round after a certain number of digits.
+#'   Produces more lightweight data by removing points with extremely similar precision/recall values.
+#' @param noRankAt1 Logical; whether to points for FDR values of 1. This prevents
+#'   a diagonal line from giving a misleading AUPRC impression where there are
+#'   a lot of 1s.
+#'
+#' @return A data.frame.
 getStats <- function(sl, truth, celltype=rep(1L, length(truth)), roundNd=NULL, noRankAt1=TRUE){
+  stopifnot(nrow(sl)==length(truth) && length(truth)==length(celltype))
   dplyr::bind_rows(lapply(split(seq_along(truth), celltype), FUN=\(i){
     sl <- sl[i,,drop=FALSE]
     truth <- truth[i]
@@ -87,6 +103,19 @@ getStats <- function(sl, truth, celltype=rep(1L, length(truth)), roundNd=NULL, n
   }), .id="celltype")
 }
 
+#' plotPR
+#' 
+#' Plots a precision-recall curve
+#'
+#' @param st The output of getStats
+#' @param ths The nominal FDR thresholds at which to plot points
+#' @param facet_scores Logical; whether to facet by score (i.e. method)
+#' @param sqrty Logical; whether to sqrt-transform the y axis
+#' @param noLine Logical; whether to omit the line and just print points
+#' @param sqrtx Logical; whether to sqrt-transform the x axis
+#' @param ... Ignored
+#'
+#' @return A ggplot object
 plotPR <- function(st, ths=c(0.05,0.1,0.25), facet_scores=TRUE, sqrty=FALSE, noLine=FALSE, sqrtx=TRUE, ...){
   if(!is.null(ths)){
     thsd <- dplyr::bind_rows(lapply(split(st, st[,c("celltype","score")]), FUN=function(x){
@@ -120,6 +149,22 @@ plotPR <- function(st, ths=c(0.05,0.1,0.25), facet_scores=TRUE, sqrty=FALSE, noL
 }
 
 
+#' tprPlot
+#' 
+#' Produces a TPR-FDR plot.
+#'
+#' @param st The output of getStats
+#' @param ths The nominal FDR thresholds at which to plot points
+#' @param sqrty Logical; whether to sqrt-transform the y axis
+#' @param sqrtx Logical; whether to sqrt-transform the x axis
+#' @param mergeSeeds Logical; whether to merge random seeds for plotting the 
+#'   curve
+#' @param legend.inside Logical; whether to put the legend inside the plot
+#' @param nrow Logical; number of rows for faceting
+#' @param leg.spacing Spacing for the legend
+#' @param ... Ignored
+#'
+#' @return A ggplot object
 tprPlot <- function(st, ths=c(0.05,0.1,0.25), sqrty=TRUE, sqrtx=FALSE, mergeSeeds=TRUE,
                     legend.inside=TRUE, nrow=2, leg.spacing=0.35, ...){
   st <- st[!grepl("Excitatory",st$celltype),]
@@ -163,6 +208,7 @@ tprPlot <- function(st, ths=c(0.05,0.1,0.25), sqrty=TRUE, sqrtx=FALSE, mergeSeed
        x="False Discovery Rate (FDR)", shape="Nominal\nFDR threshold")
 }
 
+# merge stats from sim & real datasets
 mergeSts <- function(sim, ms){
   st <- dplyr::bind_rows(list("simulation"=sim, "MS data"=ms), .id="Dataset")
   st <- st[!grepl("Excitatory",st$celltype),]
@@ -170,6 +216,7 @@ mergeSts <- function(sim, ms){
   st
 }
 
+# plot threshold-based stats
 plotThStats <- function(x){
   x2 <- x[x$variable=="F1" & !grepl("Unaffected",x$celltype),]
   x2$F1 <- x2$value
@@ -181,6 +228,7 @@ plotThStats <- function(x){
     scale_fill_viridis_c()
 }
 
+# plot threshold-based stats (version 2)
 plotThStats2 <- function(x, type=c("mean","median")){
   type <- match.arg(type)
   x <- as.data.frame(x[!grepl("Unaffected",x$celltype),])
@@ -196,6 +244,23 @@ plotThStats2 <- function(x, type=c("mean","median")){
 }
 
 
+
+#' computeMetrics
+#'
+#' Computes precision/recall metrics at the given threshold, across the random
+#' seeds, and reports the mean/sd, median/mad.
+#'
+#' @param ssres A list of DEA tables, one per random see
+#' @param truth A table of true hypotheses (with the celltype, gene and isDEG 
+#'   columns). If ommitted, there should be an isDEG column in the tables of 
+#'   `ssres`.
+#' @param th The threshold at which to compute metrics.
+#' @param scores The subset of scores (i.e. column names of the tables in 
+#'   `ssres`) to use.
+#' @param relative Whether to subtract from the scores the value at baseline
+#'   (i.e. without prior).
+#'
+#' @return A table.
 computeMetrics <- function(ssres, truth=NULL, th=0.1, scores=NULL, relative=FALSE) {
   library(data.table)
   stopifnot(!is.null(ssres[[1]]$isDEG) || !is.null(truth))
