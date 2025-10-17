@@ -1,4 +1,4 @@
-renameScores <- function(st, rmLoc=FALSE, rmRaw=TRUE, rmSig=FALSE){
+renameScores <- function(st, rmLoc=FALSE, rmRaw=TRUE, rmSig=FALSE, addNp=FALSE){
   if(is.data.frame(st)){
     if(!is.null(st$score))
       st$score <- renameScores(st$score, rmLoc=rmLoc, rmRaw=rmRaw, rmSig=rmSig)
@@ -13,6 +13,10 @@ renameScores <- function(st, rmLoc=FALSE, rmRaw=TRUE, rmSig=FALSE){
   if(rmLoc) levels(score) <- gsub("\\.loc|\\.glb","",levels(score))
   if(rmRaw) levels(score) <- gsub("\\.raw","",levels(score))
   if(rmSig) levels(score) <- gsub("sig\\.","",levels(score))
+  if(addNp){
+    w <- grep("^FDR", levels(score))
+    levels(score)[w] <- paste0(levels(score)[w], " (no prior)")
+  }
   score
 }
 

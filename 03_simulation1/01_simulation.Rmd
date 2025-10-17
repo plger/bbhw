@@ -17,16 +17,20 @@ suppressPackageStartupMessages({
 source("../functions.R")
 ```
 
-As input for the simulation we used a filtered, downsized version of the data from the muscat paper:
+As reference for the simulation we used a filtered, downsized version of the data from the muscat paper.
+For space reasons, we here provide the prepared muscat reference data, i.e. the product of:
 
 ```{r, eval=FALSE}
 ref <- readRDS("../04_simulation2/data/ref/week13.SCE.processed.rds")
+# prepare data for simulation:
 ref <- ref[,ref$group_id=="WT"]
 ref$cluster_id <- ref$cluster2
 ref$group_id <- NULL
 ref <- prepSim(ref)
 saveRDS(ref, "refPrepped4Sim.rds")
 ```
+
+To produce a realistic simulation with different DE signals for different cell types, we simulate by chunks:
 
 ```{r}
 ref <- readRDS("refPrepped4Sim.rds")
@@ -55,6 +59,8 @@ levels(sim4$cluster_id) <- "largeUnaffected2"
 rowData(sim1) <- rowData(sim2) <- rowData(sim3) <- rowData(sim4) <- NULL
 sim <- cbind(sim1,sim2,sim3,sim4)
 saveRDS(sim, file="simulated1.SCE.rds")
+
+
 de <- rbind(gi1[which(gi1$category=="de"),], gi2[which(gi2$category=="de"),],
             gi3[which(gi3$category=="de"),])
 de <- de[,c("gene","cluster_id","logFC")]
@@ -101,6 +107,7 @@ rs <- sapply(assays(pb), rowSums)
 props <- (1L+rs)/(rowSums(1L+rs))
 ```
 
+We run the DEAs on 12 2vs2 subsets of the data:
 
 ```{r, eval=TRUE}
 set.seed(123)
@@ -125,6 +132,7 @@ ssres <- bplapply(1:12, BPPARAM=MulticoreParam(6, RNGseed=1234, progress=FALSE),
 saveRDS(ssres, file="ssres.rds")
 ```
 
+We apply the various bbhw options:
 
 ```{r}
 ssres <- readRDS("ssres.rds")

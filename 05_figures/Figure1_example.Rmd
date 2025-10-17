@@ -50,7 +50,7 @@ p2 <- ggplot(a, aes(x=p_val, y=..density.., fill=bulkBin2)) + geom_histogram(bre
   theme(legend.position = "bottom", strip.background = element_blank(), legend.box="horizontal")
 ```
 
-```{r, eval=FALSE, fig.width=9, fig.height=3}
+```{r, eval=TRUE, fig.width=9, fig.height=3}
 pdf("Figure1.pdf", width=9, height=3)
 plot_grid(plot_grid(p1b,p1,nrow=2,rel_heights = c(2,3), scale=0.9, labels="AUTO"),
             p2, scale=c(1,0.9), labels=c(NA,"C"), nrow=1, rel_widths = c(2,3))
