@@ -6,13 +6,15 @@ If you're rather looking for information on how to _use_ BBHW, refer to the [vig
 
 ## Installing the modified version of muscat
 
-The bbhw-related functions are now in the devel bioconductor version of muscat (and will soon be in the release version). You may also install the latest from github:
+The bbhw-related functions are now on Bioconductor 3.22 in the [muscat](https://www.bioconductor.org/packages/release/bioc/html/muscat.html) package (v1.24.0), and can thus be installed with `BiocManager::install("muscat")`.
+
+In case you have not yet updated bioconductor, you may also install it from the github repository:
 
 ```{r}
 BiocManager::install("HelenaLC/muscat")
 ```
 
-If you wish to use the exact version of muscat with which the analyses were run, use this:
+If you wish to use the exact version of muscat with which the analyses from the paper were run, use this:
 
 ```{r}
 BiocManager::install("HelenaLC/muscat", ref="ff6d5a020c2171deaae67c9686a7974e296ca78d", build_vignettes=FALSE)
